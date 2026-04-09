@@ -150,9 +150,9 @@ tr.alarm-active td{animation:alarmPulse 1s ease infinite}
     </div>
   </header>
   <div class="error-banner" id="errorBanner"></div>
-  <div class="controls">
-    <input type="text" class="search-box" id="searchInput" placeholder="코인 검색 (BTC, ETH, 비트코인...)">
-    <div class="coin-count" id="coinCount">공통 코인: <strong>0</strong>개</div>
+  <div style="display:flex;gap:var(--space-3);align-items:center;margin-bottom:var(--space-3)">
+    <input type="text" class="search-box" id="searchInput" placeholder="코인 검색..." style="max-width:220px;padding:var(--space-2) var(--space-3);font-size:0.82rem">
+    <div class="coin-count" id="coinCount" style="font-size:0.78rem;padding:var(--space-1) var(--space-3)">총 <strong>0</strong>개</div>
   </div>
   <div class="tables-grid">
       <div class="table-wrap">
@@ -209,7 +209,10 @@ tr.alarm-active td{animation:alarmPulse 1s ease infinite}
   <div class="settings-section">
     <div class="settings-section-title">🔔 알람 설정</div>
     <div class="settings-row"><label>알람 활성화</label><label class="toggle-switch"><input type="checkbox" id="alarmEnabled"><span class="slider"></span></label></div>
-    <div class="settings-row"><label>스프레드 임계값 (%)</label><input type="number" id="alarmThreshold" value="0.5" min="0.01" max="10" step="0.01"></div>
+    <div class="settings-row"><label>해외→업비트 임계값 (%)</label><input type="number" id="alarmIntlUpbit" value="1" min="-10" max="50" step="0.01"></div>
+    <div class="settings-row"><label>모든거래소 임계값 (%)</label><input type="number" id="alarmAllArb" value="0.5" min="-10" max="50" step="0.01"></div>
+    <div class="settings-row"><label>해외→빗썸 임계값 (%)</label><input type="number" id="alarmIntlBithumb" value="1" min="-10" max="50" step="0.01"></div>
+    <div class="settings-row"><label>입출금제한 임계값 (%)</label><input type="number" id="alarmBlocked" value="3" min="0" max="50" step="0.01"></div>
     <div class="settings-row"><label>볼륨</label><input type="range" id="alarmVolume" min="0" max="100" value="50"><span class="vol-val" id="alarmVolVal">50%</span></div>
     <div class="settings-row"><label>쿨다운 (초)</label><input type="number" id="alarmCooldown" value="30" min="5" max="300" step="5"></div>
     <div class="settings-row"><button class="btn-test-alarm" id="btnTestAlarm">🔊 테스트</button></div>
@@ -239,12 +242,22 @@ window._hideSymbol=hideSymbol;window._restoreSymbol=restoreSymbol;window._restor
 let audioCtx=null;const alarmCooldowns={};
 function getAudioCtx(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx}
 function playBeep(v){try{const c=getAudioCtx(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='triangle';o.frequency.setValueAtTime(880,c.currentTime);o.frequency.setValueAtTime(1100,c.currentTime+0.15);o.frequency.setValueAtTime(880,c.currentTime+0.3);o.frequency.setValueAtTime(1100,c.currentTime+0.45);g.gain.setValueAtTime(v*0.85,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.7);o.start(c.currentTime);o.stop(c.currentTime+0.7)}catch(e){console.warn('Audio error',e)}}
-function checkAlarms(rows){const en=document.getElementById('alarmEnabled').checked;if(!en)return;const th=parseFloat(document.getElementById('alarmThreshold').value)||0.5,vol=(parseInt(document.getElementById('alarmVolume').value)||50)/100,cd=parseInt(document.getElementById('alarmCooldown').value)||30,now=Date.now();let beep=false;rows.forEach(function(r){if(hiddenCoins.has(r.symbol))return;const sv=r.obSpread!=null?r.obSpread:r.spread;if(sv>=th){const la=alarmCooldowns[r.symbol]||0;if(now-la>cd*1000){alarmCooldowns[r.symbol]=now;beep=true;r._alarming=true}}}); if(beep)playBeep(vol)}
+function checkAlarms(data){var en=document.getElementById('alarmEnabled').checked;if(!en)return;
+var vol=(parseInt(document.getElementById('alarmVolume').value)||50)/100;
+var cd=parseInt(document.getElementById('alarmCooldown').value)||30;
+var thIU=parseFloat(document.getElementById('alarmIntlUpbit').value)||1;
+var thAA=parseFloat(document.getElementById('alarmAllArb').value)||0.5;
+var thIB=parseFloat(document.getElementById('alarmIntlBithumb').value)||1;
+var thBL=parseFloat(document.getElementById('alarmBlocked').value)||3;
+var now=Date.now(),beep=false;
+var checks=[{rows:data.intlUpbitRows,th:thIU},{rows:data.allArbRows,th:thAA},{rows:data.intlBithumbRows,th:thIB},{rows:data.blockedRows,th:thBL}];
+checks.forEach(function(c){c.rows.forEach(function(r){if(hiddenCoins.has(r.symbol))return;if(r.pct>=c.th){var la=alarmCooldowns[r.symbol+'_'+c.th]||0;if(now-la>cd*1000){alarmCooldowns[r.symbol+'_'+c.th]=now;beep=true;r._alarming=true}}})});
+if(beep)playBeep(vol)}
 const elSO=document.getElementById('settingsOverlay'),elBS=document.getElementById('btnSettings');
 document.getElementById('settingsClose').addEventListener('click',function(){elSO.classList.remove('open');elBS.classList.remove('active')});
 elBS.addEventListener('click',function(){elSO.classList.toggle('open');elBS.classList.toggle('active');renderHiddenCoins()});
 elSO.addEventListener('click',function(e){if(e.target===elSO){elSO.classList.remove('open');elBS.classList.remove('active')}});
-['alarmEnabled','alarmThreshold','alarmVolume','alarmCooldown'].forEach(function(id){var el=document.getElementById(id),sv=localStorage.getItem('arb_'+id);if(sv!==null){if(el.type==='checkbox')el.checked=sv==='true';else el.value=sv}el.addEventListener('change',function(){localStorage.setItem('arb_'+id,el.type==='checkbox'?el.checked:el.value)});el.addEventListener('input',function(){localStorage.setItem('arb_'+id,el.type==='checkbox'?el.checked:el.value);if(id==='alarmVolume')document.getElementById('alarmVolVal').textContent=el.value+'%'})});
+['alarmEnabled','alarmIntlUpbit','alarmAllArb','alarmIntlBithumb','alarmBlocked','alarmVolume','alarmCooldown'].forEach(function(id){var el=document.getElementById(id),sv=localStorage.getItem('arb_'+id);if(sv!==null){if(el.type==='checkbox')el.checked=sv==='true';else el.value=sv}el.addEventListener('change',function(){localStorage.setItem('arb_'+id,el.type==='checkbox'?el.checked:el.value)});el.addEventListener('input',function(){localStorage.setItem('arb_'+id,el.type==='checkbox'?el.checked:el.value);if(id==='alarmVolume')document.getElementById('alarmVolVal').textContent=el.value+'%'})});
 ['filterArbMin','filterSpreadMin','filterKimchiMin'].forEach(function(id){var el=document.getElementById(id),sv=localStorage.getItem('arb_'+id);if(sv!==null)el.value=sv;function onFilterChange(){localStorage.setItem('arb_'+id,el.value);if(lastData)renderAllTables(lastData)}el.addEventListener('change',onFilterChange);el.addEventListener('input',onFilterChange)});
 document.getElementById('alarmVolVal').textContent=document.getElementById('alarmVolume').value+'%';
 document.getElementById('btnTestAlarm').addEventListener('click',function(){playBeep((parseInt(document.getElementById('alarmVolume').value)||50)/100)});
@@ -270,7 +283,7 @@ fetchWithCors('https://api.upbit.com/v1/market/all'),
 fetchWithCors('https://api.bithumb.com/public/ticker/ALL_KRW'),
 fetchWithCors('https://api.bithumb.com/public/assetsstatus/ALL'),
 fetch('https://api.binance.com/api/v3/ticker/24hr').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}),
-(window._exInfoCache&&Date.now()-window._exInfoCacheAt<1800000?Promise.resolve(window._exInfoCache):fetch('https://api.binance.com/api/v3/exchangeInfo').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(d){window._exInfoCache=d;window._exInfoCacheAt=Date.now();return d})),
+(window._exInfoCache&&Date.now()-window._exInfoCacheAt<300000?Promise.resolve(window._exInfoCache):fetch('https://api.binance.com/api/v3/exchangeInfo').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(d){window._exInfoCache=d;window._exInfoCacheAt=Date.now();return d})),
 fetch('https://api.binance.com/api/v3/ticker/bookTicker').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}),
 fetch('https://www.okx.com/api/v5/market/tickers?instType=SPOT').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}),
 fetch('https://api.bybit.com/v5/market/tickers?category=spot').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}),
@@ -401,7 +414,7 @@ var kp=lastKimchiPremium;
 if(kp!=null){elKimchi.textContent=fmtPct(kp);elKimchi.className='status-value '+(kp>0?'positive':kp<0?'negative':'')}else{elKimchi.textContent='—';elKimchi.className='status-value'}
 elLastUpdate.textContent=new Date().toLocaleTimeString('ko-KR');
 if(data.errors.length>0){elErrorBanner.textContent='⚠ '+data.errors.join(' | ');elErrorBanner.classList.add('show');elConnStatus.innerHTML='<span class="conn-dot err"></span>오류'}else{elErrorBanner.classList.remove('show');elConnStatus.innerHTML='<span class="conn-dot ok"></span>연결됨'}
-renderAllTables(data)}
+checkAlarms(data);renderAllTables(data)}
 // 통합 행 렌더러
 var EX_LOGOS={
 '업비트':'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgcng9IjYiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0iIzAwNUZFNiIvPjx0ZXh0IHg9IjE2IiB5PSIyMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXdlaWdodD0iYm9sZCIgZm9udC1zaXplPSIxOCIgZmlsbD0id2hpdGUiPlU8L3RleHQ+PC9zdmc+',
@@ -416,7 +429,8 @@ function exImg(name){var src=EX_LOGOS[name];return src?'<img class="ex-logo" src
 function exStyle(name){return EX_COLORS[name]||'color:var(--text-primary)'}
 function renderUnifiedRow(r,i){
 var pc='spread-low',ps='—';if(r.pct!=null){ps=r.pct.toFixed(3)+'%';if(r.pct>=1)pc='spread-high';else if(r.pct>=0.3)pc='spread-mid';else pc='spread-low'}
-var h='<tr class="fade-row" data-sym="'+r.symbol+'" style="animation-delay:'+(i*12)+'ms">';
+var ac=r._alarming?' alarm-active':'';
+var h='<tr class="fade-row'+ac+'" data-sym="'+r.symbol+'" style="animation-delay:'+(i*12)+'ms">';
 h+='<td><span class="coin-symbol">'+r.symbol+'</span><span class="coin-name">'+r.korean_name+'</span></td>';
 h+='<td style="text-align:left">'+exImg(r.buyEx)+' <span style="font-weight:600;'+exStyle(r.buyEx)+'">'+(r.buyEx||'—')+'</span><br><span style="font-size:0.75rem;color:var(--text-secondary)">₩'+fmtKRWD(r.buyPrice)+'</span></td>';
 h+='<td style="text-align:left">'+exImg(r.sellEx)+' <span style="font-weight:600;'+exStyle(r.sellEx)+'">'+(r.sellEx||'—')+'</span><br><span style="font-size:0.75rem;color:var(--text-secondary)">₩'+fmtKRWD(r.sellPrice)+'</span></td>';
@@ -438,10 +452,10 @@ function renderAllTables(data){
 var iu=filterRows(data.intlUpbitRows);var ib=filterRows(data.intlBithumbRows);var aa=filterRows(data.allArbRows);var bl=filterRows(data.blockedRows);
 elIntlUpbitCount.textContent=iu.length+'개';elAllArbCount.textContent=aa.length+'개';elIntlBithumbCount.textContent=ib.length+'개';elRestrictedCount.textContent=bl.length+'개';
 elCoinCount.innerHTML='총 <strong>'+(iu.length+ib.length+aa.length+bl.length)+'</strong>개'+(hiddenCoins.size>0?' · 숨김 '+hiddenCoins.size+'개':'');
-smoothUpdate(elTbodyIntlUpbit,iu.slice(0,4),renderUnifiedRow,updateUnifiedRow,5);
-smoothUpdate(elTbodyAllArb,aa.slice(0,4),renderUnifiedRow,updateUnifiedRow,5);
-smoothUpdate(elTbodyIntlBithumb,ib.slice(0,4),renderUnifiedRow,updateUnifiedRow,5);
-smoothUpdate(elTbodyBlocked,bl.slice(0,4),renderUnifiedRow,updateUnifiedRow,5)}
+smoothUpdate(elTbodyIntlUpbit,iu,renderUnifiedRow,updateUnifiedRow,5);
+smoothUpdate(elTbodyAllArb,aa,renderUnifiedRow,updateUnifiedRow,5);
+smoothUpdate(elTbodyIntlBithumb,ib,renderUnifiedRow,updateUnifiedRow,5);
+smoothUpdate(elTbodyBlocked,bl,renderUnifiedRow,updateUnifiedRow,5)}
 var _searchDebounceTimer=null;
 elSearch.addEventListener('input',function(){clearTimeout(_searchDebounceTimer);_searchDebounceTimer=setTimeout(function(){if(lastData)renderAllTables(lastData)},200)});
 function startCountdown(){countdownVal=2;elCountdown.textContent=countdownVal+'s';if(countdownTimer)clearInterval(countdownTimer);countdownTimer=setInterval(function(){countdownVal--;if(countdownVal<0)countdownVal=0;elCountdown.textContent=countdownVal+'s'},1000)}

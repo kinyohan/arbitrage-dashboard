@@ -399,12 +399,12 @@ Object.keys(allKrSyms).forEach(function(sym){
   }}
   if(!bestRow||bestPct<-10)return;
   // 1) 해외→업비트
-  if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='upbit'&&!txBlocked&&bestPct>-5)intlUpbitRows.push(bestRow);
+  if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='upbit'&&!txBlocked&&bestPct>0)intlUpbitRows.push(bestRow);
   // 2) 해외→빗썸
-  if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='bithumb'&&!txBlocked&&bestPct>-5)intlBithumbRows.push(bestRow);
+  if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='bithumb'&&!txBlocked&&bestPct>0)intlBithumbRows.push(bestRow);
   // 3) 모든 거래소 차익 (해외→국내는 위 칸과 겹치니 제외)
   var intlToKr=isIntl(bestRow.buyExKey)&&(bestRow.sellExKey==='upbit'||bestRow.sellExKey==='bithumb');
-  if(!txBlocked&&bestPct>-5&&!intlToKr)allArbRows.push(bestRow);
+  if(!txBlocked&&bestPct>0&&!intlToKr)allArbRows.push(bestRow);
   // 4) 입출금 막힌 코인
   if(txBlocked&&bestPct>0.5)blockedRows.push(bestRow);
 });
@@ -576,8 +576,8 @@ function buildRealtimeData(){
       if(pct>bestPct){bestPct=pct;bestRow={symbol:sym,korean_name:info.korean_name||'',english_name:info.english_name||'',buyEx:EX_NAMES[bEx],buyPrice:bAsk,sellEx:EX_NAMES[sEx],sellPrice:sBid,pct:pct,buyExKey:bEx,sellExKey:sEx}}
     }}
     if(!bestRow||bestPct<-10)return;
-    if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='upbit'&&!txBlocked&&bestPct>-5)intlUpbitRows.push(bestRow);
-    if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='bithumb'&&!txBlocked&&bestPct>-5)intlBithumbRows.push(bestRow);
+    if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='upbit'&&!txBlocked&&bestPct>0)intlUpbitRows.push(bestRow);
+    if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='bithumb'&&!txBlocked&&bestPct>0)intlBithumbRows.push(bestRow);
     var intlToKr2=isIntl(bestRow.buyExKey)&&(bestRow.sellExKey==='upbit'||bestRow.sellExKey==='bithumb');
     if(!txBlocked&&bestPct>-5&&!intlToKr2)allArbRows.push(bestRow);
     if(txBlocked&&bestPct>0.5)blockedRows.push(bestRow);

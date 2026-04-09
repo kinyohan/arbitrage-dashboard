@@ -114,7 +114,7 @@ tr.alarm-active td{animation:alarmPulse 1s ease infinite}
 .badge-blocked{background:rgba(255,23,68,0.1);color:var(--accent-red);border:1px solid rgba(255,23,68,0.25)}
 .badge-intl{background:rgba(255,109,0,0.12);color:var(--accent-intl);border:1px solid rgba(255,109,0,0.25)}
 .table-wrap table{min-width:auto}
-.table-wrap .table-scroll{max-height:45vh;overflow-y:auto}
+.table-wrap .table-scroll{max-height:360px;overflow-y:auto}
 .right-col .table-wrap table{min-width:auto}
 .restricted-section{margin-top:var(--space-4)}
 .restricted-section .table-wrap table{min-width:600px}
@@ -218,10 +218,11 @@ tr.alarm-active td{animation:alarmPulse 1s ease infinite}
     <div class="settings-row"><button class="btn-test-alarm" id="btnTestAlarm">🔊 테스트</button></div>
   </div>
   <div class="settings-section">
-    <div class="settings-section-title">📊 임계값 필터</div>
-    <div class="settings-row"><label>아비트리지 차익% 최소값</label><input type="number" id="filterArbMin" value="0" min="-10" max="50" step="0.01"></div>
-    <div class="settings-row"><label>스프레드% 최소값</label><input type="number" id="filterSpreadMin" value="0" min="0" max="50" step="0.01"></div>
-    <div class="settings-row"><label>김치프리미엄% 최소값 (절대값)</label><input type="number" id="filterKimchiMin" value="0" min="0" max="50" step="0.01"></div>
+    <div class="settings-section-title">📊 최소 차익% 필터 (이하 숨김)</div>
+    <div class="settings-row"><label>해외→업비트</label><input type="number" id="filterIntlUpbit" value="0" min="-10" max="50" step="0.01"></div>
+    <div class="settings-row"><label>모든거래소</label><input type="number" id="filterAllArb" value="0" min="-10" max="50" step="0.01"></div>
+    <div class="settings-row"><label>해외→빗썸</label><input type="number" id="filterIntlBithumb" value="0" min="-10" max="50" step="0.01"></div>
+    <div class="settings-row"><label>입출금제한</label><input type="number" id="filterBlocked" value="0" min="0" max="50" step="0.01"></div>
   </div>
   <div class="settings-section">
     <div class="settings-section-title">👁 숨긴 코인</div>
@@ -258,7 +259,7 @@ document.getElementById('settingsClose').addEventListener('click',function(){elS
 elBS.addEventListener('click',function(){elSO.classList.toggle('open');elBS.classList.toggle('active');renderHiddenCoins()});
 elSO.addEventListener('click',function(e){if(e.target===elSO){elSO.classList.remove('open');elBS.classList.remove('active')}});
 ['alarmEnabled','alarmIntlUpbit','alarmAllArb','alarmIntlBithumb','alarmBlocked','alarmVolume','alarmCooldown'].forEach(function(id){var el=document.getElementById(id),sv=localStorage.getItem('arb_'+id);if(sv!==null){if(el.type==='checkbox')el.checked=sv==='true';else el.value=sv}el.addEventListener('change',function(){localStorage.setItem('arb_'+id,el.type==='checkbox'?el.checked:el.value)});el.addEventListener('input',function(){localStorage.setItem('arb_'+id,el.type==='checkbox'?el.checked:el.value);if(id==='alarmVolume')document.getElementById('alarmVolVal').textContent=el.value+'%'})});
-['filterArbMin','filterSpreadMin','filterKimchiMin'].forEach(function(id){var el=document.getElementById(id),sv=localStorage.getItem('arb_'+id);if(sv!==null)el.value=sv;function onFilterChange(){localStorage.setItem('arb_'+id,el.value);if(lastData)renderAllTables(lastData)}el.addEventListener('change',onFilterChange);el.addEventListener('input',onFilterChange)});
+['filterIntlUpbit','filterAllArb','filterIntlBithumb','filterBlocked'].forEach(function(id){var el=document.getElementById(id),sv=localStorage.getItem('arb_'+id);if(sv!==null)el.value=sv;function onFilterChange(){localStorage.setItem('arb_'+id,el.value);if(lastData)renderAllTables(lastData)}el.addEventListener('change',onFilterChange);el.addEventListener('input',onFilterChange)});
 document.getElementById('alarmVolVal').textContent=document.getElementById('alarmVolume').value+'%';
 document.getElementById('btnTestAlarm').addEventListener('click',function(){playBeep((parseInt(document.getElementById('alarmVolume').value)||50)/100)});
 function renderHiddenCoins(){var l=document.getElementById('hiddenCoinsList');if(hiddenCoins.size===0){l.innerHTML='<div class="no-hidden">숨긴 코인이 없습니다</div>';return}var h='<div class="hidden-coins-list">';hiddenCoins.forEach(function(s){h+='<span class="hidden-coin-tag">'+s+' <button onclick="window._restoreSymbol(\''+s+'\')" title="복원">↩</button></span>'});h+='</div><button class="btn-restore-all" onclick="window._restoreAll()">전체 복원</button>';l.innerHTML=h}
@@ -446,10 +447,14 @@ function smoothUpdate(tbody,rows,renderFn,updateFn,emptyCols){if(rows.length===0
 // 새 엘리먼트 참조
 var elTbodyIntlUpbit=document.getElementById('tbodyIntlUpbit'),elTbodyAllArb=document.getElementById('tbodyAllArb'),elTbodyIntlBithumb=document.getElementById('tbodyIntlBithumb'),elTbodyBlocked=document.getElementById('tbodyBlocked');
 var elIntlUpbitCount=document.getElementById('intlUpbitCount'),elAllArbCount=document.getElementById('allArbCount'),elIntlBithumbCount=document.getElementById('intlBithumbCount'),elRestrictedCount=document.getElementById('restrictedCount');
-function filterRows(rows){var filter=elSearch.value.trim().toLowerCase();var arbMin=parseFloat(document.getElementById('filterArbMin').value)||0;var filtered=rows.filter(function(r){return!hiddenCoins.has(r.symbol)});if(filter){filtered=filtered.filter(function(r){return r.symbol.toLowerCase().indexOf(filter)!==-1||r.korean_name.toLowerCase().indexOf(filter)!==-1||r.english_name.toLowerCase().indexOf(filter)!==-1})}if(arbMin>0){filtered=filtered.filter(function(r){return r.pct>=arbMin})}
+function filterRows(rows,minPct){var filter=elSearch.value.trim().toLowerCase();var filtered=rows.filter(function(r){return!hiddenCoins.has(r.symbol)});if(filter){filtered=filtered.filter(function(r){return r.symbol.toLowerCase().indexOf(filter)!==-1||r.korean_name.toLowerCase().indexOf(filter)!==-1||r.english_name.toLowerCase().indexOf(filter)!==-1})}if(minPct!=0){filtered=filtered.filter(function(r){return r.pct>=minPct})}
 var col=sortCol,dir=sortDir==='asc'?1:-1;filtered.sort(function(a,b){if(col==='symbol')return String(a.symbol).localeCompare(String(b.symbol))*dir;var va=a[col]!=null?a[col]:-Infinity,vb=b[col]!=null?b[col]:-Infinity;return(va-vb)*dir});return filtered}
 function renderAllTables(data){
-var iu=filterRows(data.intlUpbitRows);var ib=filterRows(data.intlBithumbRows);var aa=filterRows(data.allArbRows);var bl=filterRows(data.blockedRows);
+var fIU=parseFloat(document.getElementById('filterIntlUpbit').value)||0;
+var fAA=parseFloat(document.getElementById('filterAllArb').value)||0;
+var fIB=parseFloat(document.getElementById('filterIntlBithumb').value)||0;
+var fBL=parseFloat(document.getElementById('filterBlocked').value)||0;
+var iu=filterRows(data.intlUpbitRows,fIU);var ib=filterRows(data.intlBithumbRows,fIB);var aa=filterRows(data.allArbRows,fAA);var bl=filterRows(data.blockedRows,fBL);
 elIntlUpbitCount.textContent=iu.length+'개';elAllArbCount.textContent=aa.length+'개';elIntlBithumbCount.textContent=ib.length+'개';elRestrictedCount.textContent=bl.length+'개';
 elCoinCount.innerHTML='총 <strong>'+(iu.length+ib.length+aa.length+bl.length)+'</strong>개'+(hiddenCoins.size>0?' · 숨김 '+hiddenCoins.size+'개':'');
 smoothUpdate(elTbodyIntlUpbit,iu,renderUnifiedRow,updateUnifiedRow,5);

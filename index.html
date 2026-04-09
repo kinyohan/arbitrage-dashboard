@@ -507,8 +507,13 @@ function startAllWS(markets){
   // 바이낸스 bookTicker
   wsConnect('binance','wss://stream.binance.com:9443/ws/!bookTicker',function(e){
     try{var d=JSON.parse(e.data);if(d.s&&d.s.endsWith('USDT')){var sym=d.s.replace('USDT','');
+      if(restCache.binanceActiveSyms[sym]===undefined&&Object.keys(restCache.binanceActiveSyms).length>0)return;
       var bid=parseFloat(d.b),ask=parseFloat(d.a),bsz=parseFloat(d.B),asz=parseFloat(d.A);
-      if(bid>0&&ask>0)wsBA.binance[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}catch(ex){}
+      if(bid>0&&ask>0){
+        // 기존 가격 대비 50% 이상 급변하면 무시 (stale/잘못된 데이터 방지)
+        var prev=wsBA.binance[sym];
+        if(prev&&prev.bid>0){var chg=Math.abs(bid-prev.bid)/prev.bid;if(chg>0.5)return}
+        wsBA.binance[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}}catch(ex){}
   });
 
   // OKX tickers
@@ -516,7 +521,7 @@ function startAllWS(markets){
     try{var d=JSON.parse(e.data);if(d.data){d.data.forEach(function(t){
       if(t.instId&&t.instId.endsWith('-USDT')){var sym=t.instId.replace('-USDT','');
         var bid=parseFloat(t.bidPx),ask=parseFloat(t.askPx),bsz=parseFloat(t.bidSz||0),asz=parseFloat(t.askSz||0);
-        if(bid>0&&ask>0)wsBA.okx[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}
+        if(bid>0&&ask>0){var prev=wsBA.okx[sym];if(prev&&prev.bid>0&&Math.abs(bid-prev.bid)/prev.bid>0.5)return;wsBA.okx[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}
     })}}catch(ex){}
   },function(ws){ws.send(JSON.stringify({op:'subscribe',args:[{channel:'tickers',instType:'SPOT'}]}))});
 
@@ -524,7 +529,7 @@ function startAllWS(markets){
   wsConnect('bybit','wss://stream.bybit.com/v5/public/spot',function(e){
     try{var d=JSON.parse(e.data);if(d.topic&&d.data){var sym=d.topic.replace('tickers.','').replace('USDT','');
       var t=d.data;var bid=parseFloat(t.bid1Price),ask=parseFloat(t.ask1Price),bsz=parseFloat(t.bid1Size||0),asz=parseFloat(t.ask1Size||0);
-      if(bid>0&&ask>0)wsBA.bybit[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}catch(ex){}
+      if(bid>0&&ask>0){var prev=wsBA.bybit[sym];if(prev&&prev.bid>0&&Math.abs(bid-prev.bid)/prev.bid>0.5)return;wsBA.bybit[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}}catch(ex){}
   },function(ws){ws.send(JSON.stringify({op:'subscribe',args:['tickers.BTCUSDT','tickers.ETHUSDT','tickers.XRPUSDT','tickers.SOLUSDT','tickers.ADAUSDT','tickers.DOTUSDT','tickers.AVAXUSDT','tickers.LINKUSDT','tickers.ATOMUSDT','tickers.NEARUSDT']}))});
 
   wsReady=true;

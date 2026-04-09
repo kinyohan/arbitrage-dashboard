@@ -228,7 +228,7 @@ tr.alarm-active td{animation:alarmPulse 1s ease infinite}
 <script>
 (function(){
 'use strict';
-const REFRESH_INTERVAL=5000;let lastData=null,countdownVal=5,countdownTimer=null,refreshTimer=null,sortCol='pct',sortDir='desc';
+const REFRESH_INTERVAL=2000;let lastData=null,countdownVal=5,countdownTimer=null,refreshTimer=null,sortCol='pct',sortDir='desc';
 let hiddenCoins=new Set(JSON.parse(localStorage.getItem('arb_hidden')||'[]'));
 var lastKimchiPremium=null,lastUsdtKrwRate=null;
 function saveHidden(){localStorage.setItem('arb_hidden',JSON.stringify([...hiddenCoins]))}
@@ -270,7 +270,7 @@ fetchWithCors('https://api.upbit.com/v1/market/all'),
 fetchWithCors('https://api.bithumb.com/public/ticker/ALL_KRW'),
 fetchWithCors('https://api.bithumb.com/public/assetsstatus/ALL'),
 fetch('https://api.binance.com/api/v3/ticker/24hr').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}),
-fetch('https://api.binance.com/api/v3/exchangeInfo').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}),
+(window._exInfoCache&&Date.now()-window._exInfoCacheAt<1800000?Promise.resolve(window._exInfoCache):fetch('https://api.binance.com/api/v3/exchangeInfo').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(d){window._exInfoCache=d;window._exInfoCacheAt=Date.now();return d})),
 fetch('https://api.binance.com/api/v3/ticker/bookTicker').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}),
 fetch('https://www.okx.com/api/v5/market/tickers?instType=SPOT').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}),
 fetch('https://api.bybit.com/v5/market/tickers?category=spot').then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}),
@@ -444,7 +444,7 @@ smoothUpdate(elTbodyIntlBithumb,ib.slice(0,4),renderUnifiedRow,updateUnifiedRow,
 smoothUpdate(elTbodyBlocked,bl.slice(0,4),renderUnifiedRow,updateUnifiedRow,5)}
 var _searchDebounceTimer=null;
 elSearch.addEventListener('input',function(){clearTimeout(_searchDebounceTimer);_searchDebounceTimer=setTimeout(function(){if(lastData)renderAllTables(lastData)},200)});
-function startCountdown(){countdownVal=5;elCountdown.textContent=countdownVal+'s';if(countdownTimer)clearInterval(countdownTimer);countdownTimer=setInterval(function(){countdownVal--;if(countdownVal<0)countdownVal=0;elCountdown.textContent=countdownVal+'s'},1000)}
+function startCountdown(){countdownVal=2;elCountdown.textContent=countdownVal+'s';if(countdownTimer)clearInterval(countdownTimer);countdownTimer=setInterval(function(){countdownVal--;if(countdownVal<0)countdownVal=0;elCountdown.textContent=countdownVal+'s'},1000)}
 async function tick(){try{var data=await fetchAllData();render(data)}catch(e){console.error('[tick error]',e);elErrorBanner.textContent='⚠ 데이터 로드 실패: '+e.message;elErrorBanner.classList.add('show')}startCountdown();refreshTimer=setTimeout(tick,REFRESH_INTERVAL)}
 tick();
 })();

@@ -329,6 +329,12 @@ var upbitOrderbooks={};
 var allUpbitSyms=Object.keys(upbitMarketMap).map(function(s){return'KRW-'+s});
 var obChunks=[];for(var oc=0;oc<allUpbitSyms.length;oc+=15)obChunks.push(allUpbitSyms.slice(oc,oc+15));
 await Promise.allSettled(obChunks.map(function(chunk){return fetchWithCors('https://api.upbit.com/v1/orderbook?markets='+chunk.join(','))})).then(function(res){res.forEach(function(cr){if(cr.status==='fulfilled'&&Array.isArray(cr.value))cr.value.forEach(function(ob){upbitOrderbooks[ob.market.replace('KRW-','')]=ob})})});
+// 빗썸 오더북 fetch
+var bithumbOB={};
+var bSyms=Object.keys(bithumbData);
+var bObChunks=[];for(var bi=0;bi<bSyms.length;bi+=10)bObChunks.push(bSyms.slice(bi,bi+10));
+await Promise.allSettled(bObChunks.map(function(chunk,ci){return new Promise(function(resolve){setTimeout(function(){Promise.allSettled(chunk.map(function(sym){return fetchWithCors('https://api.bithumb.com/public/orderbook/'+sym+'_KRW?count=1').then(function(d){return{sym:sym,data:d}})})).then(function(res){res.forEach(function(cr){if(cr.status==='fulfilled'&&cr.value.data&&cr.value.data.data){var ob=cr.value.data.data;if(ob.bids&&ob.bids.length&&ob.asks&&ob.asks.length){var bp=parseFloat(ob.bids[0].price),bq=parseFloat(ob.bids[0].quantity);var ap=parseFloat(ob.asks[0].price),aq=parseFloat(ob.asks[0].quantity);bithumbOB[cr.value.sym]={bid:bp,ask:ap,bidWall:bp*bq,askWall:ap*aq}}}});resolve()})},ci*200)})}));
+restCache.bithumbOB=bithumbOB;
 var usdtKrwRate=upbitTickers['USDT']?upbitTickers['USDT'].trade_price:null;
 // 실제 USD/KRW 환율 (하루 1회 갱신, 캐시)
 if(!window._realUsdKrw||!window._fxFetchedAt||Date.now()-window._fxFetchedAt>3600000){
@@ -349,7 +355,7 @@ function getAllBA(sym){
     ba.upbit={bid:u.bid_price,ask:u.ask_price,bidWall:u.bid_price*u.bid_size,askWall:u.ask_price*u.ask_size};
   }
   var bt=bithumbData[sym];
-  if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1)ba.bithumb={bid:btp,ask:btp,bidWall:1e7,askWall:1e7}}
+  if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1){var bob=restCache.bithumbOB?restCache.bithumbOB[sym]:null;if(bob)ba.bithumb=bob;else ba.bithumb={bid:btp,ask:btp,bidWall:0,askWall:0}}}
   if(usdtKrwRate){
     var krRef=ba.upbit?ba.upbit.bid:ba.bithumb?ba.bithumb.bid:null;
     var intls=[{key:'binance',isBin:true},{key:'okx',isBin:false},{key:'bybit',isBin:false}];
@@ -405,6 +411,14 @@ intlUpbitRows.sort(function(a,b){return b.pct-a.pct});
 intlBithumbRows.sort(function(a,b){return b.pct-a.pct});
 allArbRows.sort(function(a,b){return b.pct-a.pct});
 blockedRows.sort(function(a,b){return b.pct-a.pct});
+// restCache에 초기 데이터 저장
+restCache.upbitMarketMap=upbitMarketMap;restCache.bithumbData=bithumbData;restCache.bithumbStatus=bithumbStatus;
+restCache.binanceActiveSyms=binanceActiveSyms;restCache.usdtKrwRate=usdtKrwRate;restCache.realUsdKrw=realUsdKrw;
+// WS 초기값으로 오더북/BA 복사
+Object.keys(upbitOrderbooks).forEach(function(sym){var uob=upbitOrderbooks[sym];if(uob&&uob.orderbook_units&&uob.orderbook_units.length>0){var u=uob.orderbook_units[0];wsBA.upbit[sym]={bid:u.bid_price,ask:u.ask_price,bidWall:u.bid_price*u.bid_size,askWall:u.ask_price*u.ask_size}}});
+Object.keys(binancePrices).forEach(function(sym){wsBA.binance[sym]=binancePrices[sym]});
+Object.keys(okxPrices).forEach(function(sym){wsBA.okx[sym]=okxPrices[sym]});
+Object.keys(bybitPrices).forEach(function(sym){wsBA.bybit[sym]=bybitPrices[sym]});
 return{intlUpbitRows:intlUpbitRows,intlBithumbRows:intlBithumbRows,allArbRows:allArbRows,blockedRows:blockedRows,usdtKrwRate:usdtKrwRate,realUsdKrw:realUsdKrw,kimchiPremium:kimchiPremium,errors:errors}}
 function render(data){
 lastData=data;
@@ -463,9 +477,163 @@ smoothUpdate(elTbodyIntlBithumb,ib,renderUnifiedRow,updateUnifiedRow,5);
 smoothUpdate(elTbodyBlocked,bl,renderUnifiedRow,updateUnifiedRow,5)}
 var _searchDebounceTimer=null;
 elSearch.addEventListener('input',function(){clearTimeout(_searchDebounceTimer);_searchDebounceTimer=setTimeout(function(){if(lastData)renderAllTables(lastData)},200)});
-function startCountdown(){countdownVal=2;elCountdown.textContent=countdownVal+'s';if(countdownTimer)clearInterval(countdownTimer);countdownTimer=setInterval(function(){countdownVal--;if(countdownVal<0)countdownVal=0;elCountdown.textContent=countdownVal+'s'},1000)}
-async function tick(){try{var data=await fetchAllData();render(data)}catch(e){console.error('[tick error]',e);elErrorBanner.textContent='⚠ 데이터 로드 실패: '+e.message;elErrorBanner.classList.add('show')}startCountdown();refreshTimer=setTimeout(tick,REFRESH_INTERVAL)}
-tick();
+// === WebSocket 실시간 데이터 ===
+var wsBA={upbit:{},binance:{},okx:{},bybit:{}};
+var wsReady=false;
+
+function wsConnect(name,url,onMsg,onOpen){
+  var ws=new WebSocket(url);
+  ws.onopen=function(){console.log('[WS]',name,'ok');if(onOpen)onOpen(ws)};
+  ws.onmessage=onMsg;
+  ws.onclose=function(){setTimeout(function(){wsConnect(name,url,onMsg,onOpen)},3000)};
+  ws.onerror=function(e){console.warn('[WS]',name,'err');ws.close()};
+}
+
+function startAllWS(markets){
+  // 업비트 orderbook
+  var upWs=new WebSocket('wss://api.upbit.com/websocket/v1');
+  upWs.onopen=function(){upWs.send(JSON.stringify([{ticket:'arb'},{type:'orderbook',codes:markets}]))};
+  upWs.onmessage=function(e){
+    var r=new FileReader();r.onload=function(){try{
+      var d=JSON.parse(r.result);var sym=d.code.replace('KRW-','');
+      if(d.orderbook_units&&d.orderbook_units.length>0){var u=d.orderbook_units[0];
+        wsBA.upbit[sym]={bid:u.bid_price,ask:u.ask_price,bidWall:u.bid_price*u.bid_size,askWall:u.ask_price*u.ask_size}}
+    }catch(ex){}};r.readAsText(e.data);
+  };
+  upWs.onclose=function(){setTimeout(function(){startAllWS(markets)},3000)};
+  upWs.onerror=function(){upWs.close()};
+
+  // 바이낸스 bookTicker
+  wsConnect('binance','wss://stream.binance.com:9443/ws/!bookTicker',function(e){
+    try{var d=JSON.parse(e.data);if(d.s&&d.s.endsWith('USDT')){var sym=d.s.replace('USDT','');
+      var bid=parseFloat(d.b),ask=parseFloat(d.a),bsz=parseFloat(d.B),asz=parseFloat(d.A);
+      if(bid>0&&ask>0)wsBA.binance[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}catch(ex){}
+  });
+
+  // OKX tickers
+  wsConnect('okx','wss://ws.okx.com:8443/ws/v5/public',function(e){
+    try{var d=JSON.parse(e.data);if(d.data){d.data.forEach(function(t){
+      if(t.instId&&t.instId.endsWith('-USDT')){var sym=t.instId.replace('-USDT','');
+        var bid=parseFloat(t.bidPx),ask=parseFloat(t.askPx),bsz=parseFloat(t.bidSz||0),asz=parseFloat(t.askSz||0);
+        if(bid>0&&ask>0)wsBA.okx[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}
+    })}}catch(ex){}
+  },function(ws){ws.send(JSON.stringify({op:'subscribe',args:[{channel:'tickers',instType:'SPOT'}]}))});
+
+  // 바이빗 tickers
+  wsConnect('bybit','wss://stream.bybit.com/v5/public/spot',function(e){
+    try{var d=JSON.parse(e.data);if(d.topic&&d.data){var sym=d.topic.replace('tickers.','').replace('USDT','');
+      var t=d.data;var bid=parseFloat(t.bid1Price),ask=parseFloat(t.ask1Price),bsz=parseFloat(t.bid1Size||0),asz=parseFloat(t.ask1Size||0);
+      if(bid>0&&ask>0)wsBA.bybit[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}catch(ex){}
+  },function(ws){ws.send(JSON.stringify({op:'subscribe',args:['tickers.BTCUSDT','tickers.ETHUSDT','tickers.XRPUSDT','tickers.SOLUSDT','tickers.ADAUSDT','tickers.DOTUSDT','tickers.AVAXUSDT','tickers.LINKUSDT','tickers.ATOMUSDT','tickers.NEARUSDT']}))});
+
+  wsReady=true;
+}
+
+// 마지막 REST 데이터 보관 (빗썸, 마켓목록, 입출금상태, 환율 등)
+var restCache={upbitMarketMap:{},bithumbData:{},bithumbStatus:{},binanceActiveSyms:{},usdtKrwRate:null,realUsdKrw:null};
+
+// WS 데이터 + REST 캐시를 합쳐서 차익 계산
+function buildRealtimeData(){
+  var um=restCache.upbitMarketMap,bd=restCache.bithumbData,bs=restCache.bithumbStatus;
+  var usdtKrw=restCache.usdtKrwRate;
+  var BINANCE_REMAP={'BTT':'BTTC','BEAM':'BEAMX'};
+  function getBA(sym,map,isBin){if(isBin){var a=BINANCE_REMAP[sym];if(a&&map[a])return map[a]}return map[sym]||null}
+  var realUsdKrw=restCache.realUsdKrw;
+  var kimchiPremium=null;
+  var bnBtc=wsBA.binance['BTC']||null;var upBtc=wsBA.upbit['BTC']||null;
+  if(bnBtc&&realUsdKrw&&upBtc){kimchiPremium=((upBtc.bid-bnBtc.bid*realUsdKrw)/(bnBtc.bid*realUsdKrw))*100}
+  var EX_NAMES={upbit:'업비트',bithumb:'빗썸',binance:'Binance',okx:'OKX',bybit:'Bybit'};
+  var allKrSyms={};
+  Object.keys(um).forEach(function(s){if(s!=='USDT')allKrSyms[s]=true});
+  Object.keys(bd).forEach(function(s){allKrSyms[s]=true});
+  var intlUpbitRows=[],intlBithumbRows=[],allArbRows=[],blockedRows=[];
+  var isIntl=function(ex){return ex!=='upbit'&&ex!=='bithumb'};
+  Object.keys(allKrSyms).forEach(function(sym){
+    var ba={};
+    var uob=wsBA.upbit[sym];if(uob)ba.upbit=uob;
+    var bt=bd[sym];if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1){var bob=restCache.bithumbOB?restCache.bithumbOB[sym]:null;if(bob)ba.bithumb=bob;else ba.bithumb={bid:btp,ask:btp,bidWall:0,askWall:0}}}
+    if(usdtKrw){
+      var krRef=ba.upbit?ba.upbit.bid:ba.bithumb?ba.bithumb.bid:null;
+      [{key:'binance',isBin:true},{key:'okx',isBin:false},{key:'bybit',isBin:false}].forEach(function(x){
+        var d=getBA(sym,wsBA[x.key],x.isBin);
+        if(d){var bidK=d.bid*usdtKrw,askK=d.ask*usdtKrw;
+          if(!krRef||Math.abs(bidK-krRef)/Math.min(bidK,krRef)<0.5){
+            ba[x.key]={bid:bidK,ask:askK,bidWall:bidK*(d.bidSz||0),askWall:askK*(d.askSz||0)}}}
+      });
+    }
+    var exs=Object.keys(ba);if(exs.length<2)return;
+    var info=um[sym]||{korean_name:sym,english_name:''};
+    var bst=bs[sym];var bDep=bst?(bst.deposit_status==1):null;var bWit=bst?(bst.withdrawal_status==1):null;
+    var txBlocked=bDep===false||bWit===false;
+    var bestPct=-Infinity,bestRow=null;
+    for(var i=0;i<exs.length;i++){for(var j=0;j<exs.length;j++){if(i===j)continue;
+      var bEx=exs[i],sEx=exs[j],bAsk=ba[bEx].ask,sBid=ba[sEx].bid;
+      if(!bAsk||!sBid||bAsk<=0)continue;
+      var bW=ba[bEx].askWall||0,sW=ba[sEx].bidWall||0;
+      if(bW<1000000||sW<1000000)continue;
+      var pct=((sBid-bAsk)/bAsk)*100;
+      if(pct>bestPct){bestPct=pct;bestRow={symbol:sym,korean_name:info.korean_name||'',english_name:info.english_name||'',buyEx:EX_NAMES[bEx],buyPrice:bAsk,sellEx:EX_NAMES[sEx],sellPrice:sBid,pct:pct,buyExKey:bEx,sellExKey:sEx}}
+    }}
+    if(!bestRow||bestPct<-10)return;
+    if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='upbit'&&!txBlocked&&bestPct>-5)intlUpbitRows.push(bestRow);
+    if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='bithumb'&&!txBlocked&&bestPct>-5)intlBithumbRows.push(bestRow);
+    if(!txBlocked&&bestPct>-5)allArbRows.push(bestRow);
+    if(txBlocked&&bestPct>0.5)blockedRows.push(bestRow);
+  });
+  intlUpbitRows.sort(function(a,b){return b.pct-a.pct});
+  intlBithumbRows.sort(function(a,b){return b.pct-a.pct});
+  allArbRows.sort(function(a,b){return b.pct-a.pct});
+  blockedRows.sort(function(a,b){return b.pct-a.pct});
+  return{intlUpbitRows:intlUpbitRows,intlBithumbRows:intlBithumbRows,allArbRows:allArbRows,blockedRows:blockedRows,usdtKrwRate:usdtKrw,realUsdKrw:realUsdKrw,kimchiPremium:kimchiPremium,errors:[]};
+}
+
+// 초기 REST 로딩 → WS 시작 → 200ms 렌더 루프
+async function init(){
+  try{
+    elCountdown.textContent='초기화...';
+    var data=await fetchAllData();
+    render(data);
+    // REST 캐시 저장
+    restCache.usdtKrwRate=data.usdtKrwRate;
+    restCache.realUsdKrw=data.realUsdKrw;
+    // WS 시작
+    var markets=Object.keys(restCache.upbitMarketMap).map(function(s){return'KRW-'+s});
+    if(markets.indexOf('KRW-USDT')===-1)markets.push('KRW-USDT');
+    startAllWS(markets);
+    // 200ms 실시간 렌더 루프
+    setInterval(function(){
+      if(!wsReady)return;
+      // USDT 환율 업데이트 (업비트 WS에서)
+      var usdtOB=wsBA.upbit['USDT'];
+      if(usdtOB)restCache.usdtKrwRate=(usdtOB.bid+usdtOB.ask)/2;
+      try{var d=buildRealtimeData();render(d)}catch(e){console.error(e)}
+      elCountdown.textContent='실시간';
+    },200);
+    // 30초마다 빗썸/마켓목록/환율 REST 갱신
+    setInterval(async function(){
+      try{
+        var r=await Promise.allSettled([
+          fetchWithCors('https://api.upbit.com/v1/market/all'),
+          fetchWithCors('https://api.bithumb.com/public/ticker/ALL_KRW'),
+          fetchWithCors('https://api.bithumb.com/public/assetsstatus/ALL')
+        ]);
+        if(r[0].status==='fulfilled'){restCache.upbitMarketMap={};r[0].value.filter(function(m){return m.market.startsWith('KRW-')}).forEach(function(m){var sym=m.market.replace('KRW-','');restCache.upbitMarketMap[sym]={market:m.market,korean_name:m.korean_name,english_name:m.english_name}})}
+        if(r[1].status==='fulfilled'&&r[1].value.data){restCache.bithumbData={};var raw=r[1].value.data;Object.keys(raw).forEach(function(k){if(k!=='date'&&typeof raw[k]==='object'&&raw[k].closing_price)restCache.bithumbData[k]=raw[k]})}
+        if(r[2].status==='fulfilled'&&r[2].value.data)restCache.bithumbStatus=r[2].value.data;
+        // 빗썸 오더북 갱신
+        if(r[1].status==='fulfilled'&&r[1].value.data){var bSy=Object.keys(restCache.bithumbData);var bOC=[];for(var bi2=0;bi2<bSy.length;bi2+=10)bOC.push(bSy.slice(bi2,bi2+10));var newBOB={};await Promise.allSettled(bOC.map(function(ch,ci2){return new Promise(function(res2){setTimeout(function(){Promise.allSettled(ch.map(function(sy){return fetchWithCors('https://api.bithumb.com/public/orderbook/'+sy+'_KRW?count=1').then(function(dd){return{sym:sy,data:dd}})})).then(function(rr){rr.forEach(function(cr2){if(cr2.status==='fulfilled'&&cr2.value.data&&cr2.value.data.data){var ob2=cr2.value.data.data;if(ob2.bids&&ob2.bids.length&&ob2.asks&&ob2.asks.length){var bp2=parseFloat(ob2.bids[0].price),bq2=parseFloat(ob2.bids[0].quantity);var ap2=parseFloat(ob2.asks[0].price),aq2=parseFloat(ob2.asks[0].quantity);newBOB[cr2.value.sym]={bid:bp2,ask:ap2,bidWall:bp2*bq2,askWall:ap2*aq2}}}});res2()})},ci2*200)})}));restCache.bithumbOB=newBOB}
+        if(!restCache.realUsdKrw||!window._fxFetchedAt||Date.now()-window._fxFetchedAt>3600000){
+          try{var fx=await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');if(fx.ok){var fxd=await fx.json();restCache.realUsdKrw=fxd.usd.krw;window._fxFetchedAt=Date.now()}}catch(e){}}
+      }catch(e){}
+    },30000);
+    elConnStatus.innerHTML='<span class="conn-dot ok"></span>실시간';
+  }catch(e){
+    console.error(e);elErrorBanner.textContent='⚠ 초기화 실패, REST 모드로 전환';elErrorBanner.classList.add('show');
+    // 폴백: REST 폴링
+    async function tick(){try{var data=await fetchAllData();render(data)}catch(e2){}setTimeout(tick,2000)}tick();
+  }
+}
+init();
 })();
 </script>
 </body>

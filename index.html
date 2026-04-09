@@ -402,8 +402,9 @@ Object.keys(allKrSyms).forEach(function(sym){
   if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='upbit'&&!txBlocked&&bestPct>-5)intlUpbitRows.push(bestRow);
   // 2) 해외→빗썸
   if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='bithumb'&&!txBlocked&&bestPct>-5)intlBithumbRows.push(bestRow);
-  // 3) 모든 거래소 차익
-  if(!txBlocked&&bestPct>-5)allArbRows.push(bestRow);
+  // 3) 모든 거래소 차익 (해외→국내는 위 칸과 겹치니 제외)
+  var intlToKr=isIntl(bestRow.buyExKey)&&(bestRow.sellExKey==='upbit'||bestRow.sellExKey==='bithumb');
+  if(!txBlocked&&bestPct>-5&&!intlToKr)allArbRows.push(bestRow);
   // 4) 입출금 막힌 코인
   if(txBlocked&&bestPct>0.5)blockedRows.push(bestRow);
 });
@@ -577,7 +578,8 @@ function buildRealtimeData(){
     if(!bestRow||bestPct<-10)return;
     if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='upbit'&&!txBlocked&&bestPct>-5)intlUpbitRows.push(bestRow);
     if(isIntl(bestRow.buyExKey)&&bestRow.sellExKey==='bithumb'&&!txBlocked&&bestPct>-5)intlBithumbRows.push(bestRow);
-    if(!txBlocked&&bestPct>-5)allArbRows.push(bestRow);
+    var intlToKr2=isIntl(bestRow.buyExKey)&&(bestRow.sellExKey==='upbit'||bestRow.sellExKey==='bithumb');
+    if(!txBlocked&&bestPct>-5&&!intlToKr2)allArbRows.push(bestRow);
     if(txBlocked&&bestPct>0.5)blockedRows.push(bestRow);
   });
   intlUpbitRows.sort(function(a,b){return b.pct-a.pct});

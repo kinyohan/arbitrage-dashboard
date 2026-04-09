@@ -605,9 +605,9 @@ async function init(){
     // 200ms 실시간 렌더 루프
     setInterval(function(){
       if(!wsReady)return;
-      // USDT 환율 업데이트 (업비트 WS에서)
+      // USDT 환율 업데이트 (업비트 WS에서, 없으면 기존값 유지)
       var usdtOB=wsBA.upbit['USDT'];
-      if(usdtOB)restCache.usdtKrwRate=(usdtOB.bid+usdtOB.ask)/2;
+      if(usdtOB&&usdtOB.bid>1000)restCache.usdtKrwRate=(usdtOB.bid+usdtOB.ask)/2;
       try{var d=buildRealtimeData();render(d)}catch(e){console.error(e)}
       elCountdown.textContent='실시간';
     },200);

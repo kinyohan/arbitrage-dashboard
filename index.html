@@ -411,7 +411,8 @@ Object.keys(allKrSyms).forEach(function(sym){
     if(!buyAsk||!sellBid||buyAsk<=0)continue;
     // 매수벽(매도처 bid), 매도벽(매수처 ask) 100만원 이상 체크
     var buyWall=ba[buyEx].askWall||0,sellWall=ba[sellEx].bidWall||0;
-    if(buyWall<100000||sellWall<100000)continue;
+    var buyIsKr=buyEx==='upbit'||buyEx==='bithumb',sellIsKr=sellEx==='upbit'||sellEx==='bithumb';
+    if(buyIsKr&&buyWall<1000000)continue;if(sellIsKr&&sellWall<1000000)continue;
     var pct=((sellBid-buyAsk)/buyAsk)*100;
     if(pct>bestPct){bestPct=pct;bestRow={symbol:sym,korean_name:info.korean_name||'',english_name:info.english_name||'',buyEx:EX_NAMES[buyEx],buyPrice:buyAsk,buyUsdt:isIntl(buyEx)&&usdtKrwRate?buyAsk/usdtKrwRate:null,sellEx:EX_NAMES[sellEx],sellPrice:sellBid,sellUsdt:isIntl(sellEx)&&usdtKrwRate?sellBid/usdtKrwRate:null,pct:pct,buyExKey:buyEx,sellExKey:sellEx}}
   }}
@@ -656,7 +657,8 @@ function buildRealtimeData(){
       var bEx=exs[i],sEx=exs[j],bAsk=ba[bEx].ask,sBid=ba[sEx].bid;
       if(!bAsk||!sBid||bAsk<=0)continue;
       var bW=ba[bEx].askWall||0,sW=ba[sEx].bidWall||0;
-      if(bW<100000||sW<100000)continue;
+      var bIsKr=bEx==='upbit'||bEx==='bithumb',sIsKr=sEx==='upbit'||sEx==='bithumb';
+      if(bIsKr&&bW<1000000)continue;if(sIsKr&&sW<1000000)continue;
       var pct=((sBid-bAsk)/bAsk)*100;
       if(pct>bestPct){bestPct=pct;bestRow={symbol:sym,korean_name:info.korean_name||'',english_name:info.english_name||'',buyEx:EX_NAMES[bEx],buyPrice:bAsk,buyUsdt:isIntl(bEx)&&usdtKrw?bAsk/usdtKrw:null,sellEx:EX_NAMES[sEx],sellPrice:sBid,sellUsdt:isIntl(sEx)&&usdtKrw?sBid/usdtKrw:null,pct:pct,buyExKey:bEx,sellExKey:sEx}}
     }}

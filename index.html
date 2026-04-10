@@ -526,13 +526,24 @@ function startUpbitWS(markets){
   ws.onclose=function(){setTimeout(function(){startUpbitWS(markets)},3000)};
   ws.onerror=function(){ws.close()};
 }
-function startBinanceWS(){
-  wsConnect('binance','wss://stream.binance.com:9443/ws/!bookTicker',function(e){
-    try{var d=JSON.parse(e.data);if(d.s&&d.s.endsWith('USDT')){var sym=d.s.replace('USDT','');
-      if(restCache.binanceActiveSyms[sym]===undefined&&Object.keys(restCache.binanceActiveSyms).length>0)return;
-      var bid=parseFloat(d.b),ask=parseFloat(d.a),bsz=parseFloat(d.B),asz=parseFloat(d.A);
-      if(bid>0&&ask>0)wsBA.binance[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}catch(ex){}
-  });
+function startBinanceWS(symbols){
+  // 개별 심볼 bookTicker 구독 (combined stream, 최대 200개씩)
+  var streams=symbols.map(function(s){return s.toLowerCase()+'usdt@bookTicker'});
+  for(var i=0;i<streams.length;i+=200){
+    (function(chunk,idx){
+      var url='wss://stream.binance.com:9443/stream?streams='+chunk.join('/');
+      var ws=new WebSocket(url);
+      ws.onmessage=function(e){
+        try{var msg=JSON.parse(e.data);var d=msg.data||msg;if(d.s&&d.s.endsWith('USDT')){var sym=d.s.replace('USDT','');
+          var bid=parseFloat(d.b),ask=parseFloat(d.a),bsz=parseFloat(d.B),asz=parseFloat(d.A);
+          if(bid>0&&ask>0)wsBA.binance[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}catch(ex){}
+      };
+      ws.onclose=function(){setTimeout(function(){
+        var ws2=new WebSocket(url);ws2.onmessage=ws.onmessage;ws2.onclose=ws.onclose;ws2.onerror=function(){ws2.close()};
+      },3000)};
+      ws.onerror=function(){ws.close()};
+    })(streams.slice(i,i+200),i);
+  }
 }
 function startOkxWS(){
   wsConnect('okx','wss://ws.okx.com:8443/ws/v5/public',function(e){
@@ -596,7 +607,8 @@ function startBithumbWS(symbols){
 }
 function startAllWS(markets,bybitSyms){
   startUpbitWS(markets);
-  startBinanceWS();
+  var bnSyms=Object.keys(restCache.binanceActiveSyms);
+  startBinanceWS(bnSyms);
   startOkxWS();
   startBybitWS(bybitSyms);
   var bithumbSyms=Object.keys(restCache.bithumbData);

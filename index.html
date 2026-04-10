@@ -351,8 +351,9 @@ function getAllBA(sym){
   var ba={};
   var uob=upbitOrderbooks[sym];
   if(uob&&uob.orderbook_units&&uob.orderbook_units.length>0){
-    var u=uob.orderbook_units[0];
-    ba.upbit={bid:u.bid_price,ask:u.ask_price,bidWall:u.bid_price*u.bid_size,askWall:u.ask_price*u.ask_size};
+    var u0=uob.orderbook_units[0];
+    var ubW=0,uaW=0;uob.orderbook_units.forEach(function(u){ubW+=u.bid_price*u.bid_size;uaW+=u.ask_price*u.ask_size});
+    ba.upbit={bid:u0.bid_price,ask:u0.ask_price,bidWall:ubW,askWall:uaW};
   }
   var bt=bithumbData[sym];
   if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1){var bob=restCache.bithumbOB?restCache.bithumbOB[sym]:null;if(bob)ba.bithumb=bob;else ba.bithumb={bid:btp,ask:btp,bidWall:0,askWall:0}}}
@@ -393,7 +394,7 @@ Object.keys(allKrSyms).forEach(function(sym){
     if(!buyAsk||!sellBid||buyAsk<=0)continue;
     // 매수벽(매도처 bid), 매도벽(매수처 ask) 100만원 이상 체크
     var buyWall=ba[buyEx].askWall||0,sellWall=ba[sellEx].bidWall||0;
-    if(buyWall<1000000||sellWall<1000000)continue;
+    if(buyWall<100000||sellWall<100000)continue;
     var pct=((sellBid-buyAsk)/buyAsk)*100;
     if(pct>bestPct){bestPct=pct;bestRow={symbol:sym,korean_name:info.korean_name||'',english_name:info.english_name||'',buyEx:EX_NAMES[buyEx],buyPrice:buyAsk,sellEx:EX_NAMES[sellEx],sellPrice:sellBid,pct:pct,buyExKey:buyEx,sellExKey:sellEx}}
   }}
@@ -416,7 +417,7 @@ blockedRows.sort(function(a,b){return b.pct-a.pct});
 restCache.upbitMarketMap=upbitMarketMap;restCache.bithumbData=bithumbData;restCache.bithumbStatus=bithumbStatus;
 restCache.binanceActiveSyms=binanceActiveSyms;restCache.usdtKrwRate=usdtKrwRate;restCache.realUsdKrw=realUsdKrw;
 // WS 초기값으로 오더북/BA 복사
-Object.keys(upbitOrderbooks).forEach(function(sym){var uob=upbitOrderbooks[sym];if(uob&&uob.orderbook_units&&uob.orderbook_units.length>0){var u=uob.orderbook_units[0];wsBA.upbit[sym]={bid:u.bid_price,ask:u.ask_price,bidWall:u.bid_price*u.bid_size,askWall:u.ask_price*u.ask_size}}});
+Object.keys(upbitOrderbooks).forEach(function(sym){var uob=upbitOrderbooks[sym];if(uob&&uob.orderbook_units&&uob.orderbook_units.length>0){var u0=uob.orderbook_units[0];var ubW=0,uaW=0;uob.orderbook_units.forEach(function(u){ubW+=u.bid_price*u.bid_size;uaW+=u.ask_price*u.ask_size});wsBA.upbit[sym]={bid:u0.bid_price,ask:u0.ask_price,bidWall:ubW,askWall:uaW}}});
 Object.keys(binancePrices).forEach(function(sym){wsBA.binance[sym]=binancePrices[sym]});
 Object.keys(okxPrices).forEach(function(sym){wsBA.okx[sym]=okxPrices[sym]});
 Object.keys(bybitPrices).forEach(function(sym){wsBA.bybit[sym]=bybitPrices[sym]});
@@ -496,8 +497,9 @@ function startUpbitWS(markets){
   ws.onmessage=function(e){
     var r=new FileReader();r.onload=function(){try{
       var d=JSON.parse(r.result);var sym=d.code.replace('KRW-','');
-      if(d.orderbook_units&&d.orderbook_units.length>0){var u=d.orderbook_units[0];
-        wsBA.upbit[sym]={bid:u.bid_price,ask:u.ask_price,bidWall:u.bid_price*u.bid_size,askWall:u.ask_price*u.ask_size}}
+      if(d.orderbook_units&&d.orderbook_units.length>0){var u0=d.orderbook_units[0];
+        var ubW=0,uaW=0;d.orderbook_units.forEach(function(u){ubW+=u.bid_price*u.bid_size;uaW+=u.ask_price*u.ask_size});
+        wsBA.upbit[sym]={bid:u0.bid_price,ask:u0.ask_price,bidWall:ubW,askWall:uaW}}
     }catch(ex){}};r.readAsText(e.data);
   };
   ws.onclose=function(){setTimeout(function(){startUpbitWS(markets)},3000)};
@@ -591,7 +593,7 @@ function buildRealtimeData(){
       var bEx=exs[i],sEx=exs[j],bAsk=ba[bEx].ask,sBid=ba[sEx].bid;
       if(!bAsk||!sBid||bAsk<=0)continue;
       var bW=ba[bEx].askWall||0,sW=ba[sEx].bidWall||0;
-      if(bW<1000000||sW<1000000)continue;
+      if(bW<100000||sW<100000)continue;
       var pct=((sBid-bAsk)/bAsk)*100;
       if(pct>bestPct){bestPct=pct;bestRow={symbol:sym,korean_name:info.korean_name||'',english_name:info.english_name||'',buyEx:EX_NAMES[bEx],buyPrice:bAsk,sellEx:EX_NAMES[sEx],sellPrice:sBid,pct:pct,buyExKey:bEx,sellExKey:sEx}}
     }}

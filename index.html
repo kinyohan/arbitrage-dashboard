@@ -466,16 +466,16 @@ var pc='spread-low',ps='—';if(r.pct!=null){ps=r.pct.toFixed(3)+'%';if(r.pct>=1
 var ac=r._alarming?' alarm-active':'';
 var h='<tr class="fade-row'+ac+'" data-sym="'+r.symbol+'" style="animation-delay:'+(i*12)+'ms">';
 h+='<td><span class="coin-symbol">'+r.symbol+'</span><span class="coin-name">'+r.korean_name+'</span></td>';
-var buyDisp=r.buyUsdt!=null?'$'+fmtUSDT(r.buyUsdt):'₩'+fmtKRWD(r.buyPrice);
-var sellDisp=r.sellUsdt!=null?'$'+fmtUSDT(r.sellUsdt):'₩'+fmtKRWD(r.sellPrice);
+var buyDisp='₩'+fmtKRWD(r.buyPrice)+(r.buyUsdt!=null?' [$'+fmtUSDT(r.buyUsdt)+']':'');
+var sellDisp='₩'+fmtKRWD(r.sellPrice)+(r.sellUsdt!=null?' [$'+fmtUSDT(r.sellUsdt)+']':'');
 h+='<td style="text-align:left">'+exImg(r.buyEx)+' <span style="font-weight:600;'+exStyle(r.buyEx)+'">'+(r.buyEx||'—')+'</span><br><span style="font-size:0.75rem;color:var(--text-secondary)">'+buyDisp+'</span></td>';
 h+='<td style="text-align:left">'+exImg(r.sellEx)+' <span style="font-weight:600;'+exStyle(r.sellEx)+'">'+(r.sellEx||'—')+'</span><br><span style="font-size:0.75rem;color:var(--text-secondary)">'+sellDisp+'</span></td>';
 h+='<td class="'+pc+'">'+ps+'</td>';
 h+='<td><button class="btn-hide" onclick="window._hideSymbol(\''+r.symbol+'\')" title="숨기기">✕</button></td>';
 return h+'</tr>'}
 function updateUnifiedRow(tr,r){var c=tr.querySelectorAll('td');if(c.length<5)return;
-var buyD=r.buyUsdt!=null?'$'+fmtUSDT(r.buyUsdt):'₩'+fmtKRWD(r.buyPrice);
-var sellD=r.sellUsdt!=null?'$'+fmtUSDT(r.sellUsdt):'₩'+fmtKRWD(r.sellPrice);
+var buyD='₩'+fmtKRWD(r.buyPrice)+(r.buyUsdt!=null?' [$'+fmtUSDT(r.buyUsdt)+']':'');
+var sellD='₩'+fmtKRWD(r.sellPrice)+(r.sellUsdt!=null?' [$'+fmtUSDT(r.sellUsdt)+']':'');
 c[1].innerHTML=exImg(r.buyEx)+' <span style="font-weight:600;'+exStyle(r.buyEx)+'">'+(r.buyEx||'—')+'</span><br><span style="font-size:0.75rem;color:var(--text-secondary)">'+buyD+'</span>';
 c[2].innerHTML=exImg(r.sellEx)+' <span style="font-weight:600;'+exStyle(r.sellEx)+'">'+(r.sellEx||'—')+'</span><br><span style="font-size:0.75rem;color:var(--text-secondary)">'+sellD+'</span>';
 var pc='spread-low',ps='—';if(r.pct!=null){ps=r.pct.toFixed(3)+'%';if(r.pct>=1)pc='spread-high';else if(r.pct>=0.3)pc='spread-mid'}

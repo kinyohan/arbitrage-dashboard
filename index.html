@@ -497,7 +497,7 @@ smoothUpdate(elTbodyBlocked,bl,renderUnifiedRow,updateUnifiedRow,5)}
 var _searchDebounceTimer=null;
 elSearch.addEventListener('input',function(){clearTimeout(_searchDebounceTimer);_searchDebounceTimer=setTimeout(function(){if(lastData)renderAllTables(lastData)},200)});
 // === WebSocket 실시간 데이터 ===
-var wsBA={upbit:{},binance:{},okx:{},bybit:{}};
+var wsBA={upbit:{},bithumb:{},binance:{},okx:{},bybit:{}};
 var wsReady=false;
 
 function wsConnect(name,url,onMsg,onOpen){
@@ -561,11 +561,42 @@ function startBybitWS(symbols){
     })(args.slice(bi,bi+10));
   }
 }
+function startBithumbWS(symbols){
+  var ws=new WebSocket('wss://pubwss.bithumb.com/pub/ws');
+  ws.onopen=function(){
+    var syms=symbols.map(function(s){return s+'_KRW'});
+    ws.send(JSON.stringify({type:'orderbookdepth',symbols:syms,tickTypes:['1H']}));
+    console.log('[WS] Bithumb connected,',syms.length,'markets');
+  };
+  ws.onmessage=function(e){
+    try{var d=JSON.parse(e.data);if(d.content&&d.content.list){
+      var sym=d.content.symbol?d.content.symbol.replace('_KRW',''):null;
+      if(!sym)return;
+      var bids=[],asks=[];
+      d.content.list.forEach(function(item){
+        var p=parseFloat(item.price),q=parseFloat(item.quantity);
+        if(item.orderType==='bid')bids.push({p:p,q:q});
+        else if(item.orderType==='ask')asks.push({p:p,q:q});
+      });
+      if(bids.length>0&&asks.length>0){
+        bids.sort(function(a,b){return b.p-a.p});
+        asks.sort(function(a,b){return a.p-b.p});
+        var bidW=0;bids.forEach(function(b){bidW+=b.p*b.q});
+        var askW=0;asks.forEach(function(a){askW+=a.p*a.q});
+        wsBA.bithumb[sym]={bid:bids[0].p,ask:asks[0].p,bidWall:bidW,askWall:askW};
+      }
+    }}catch(ex){}
+  };
+  ws.onclose=function(){setTimeout(function(){startBithumbWS(symbols)},3000)};
+  ws.onerror=function(){ws.close()};
+}
 function startAllWS(markets,bybitSyms){
   startUpbitWS(markets);
   startBinanceWS();
   startOkxWS();
   startBybitWS(bybitSyms);
+  var bithumbSyms=Object.keys(restCache.bithumbData);
+  if(bithumbSyms.length>0)startBithumbWS(bithumbSyms);
   wsReady=true;
 }
 
@@ -591,7 +622,9 @@ function buildRealtimeData(){
   Object.keys(allKrSyms).forEach(function(sym){
     var ba={};
     var uob=wsBA.upbit[sym];if(uob)ba.upbit=uob;
-    var bt=bd[sym];if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1){var bob=restCache.bithumbOB?restCache.bithumbOB[sym]:null;if(bob)ba.bithumb=bob;else ba.bithumb={bid:btp,ask:btp,bidWall:0,askWall:0}}}
+    var bws=wsBA.bithumb[sym];
+    if(bws){ba.bithumb=bws}
+    else{var bt=bd[sym];if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1){var bob=restCache.bithumbOB?restCache.bithumbOB[sym]:null;if(bob)ba.bithumb=bob;else ba.bithumb={bid:btp,ask:btp,bidWall:0,askWall:0}}}}
     if(usdtKrw){
       var krRef=ba.upbit?ba.upbit.bid:ba.bithumb?ba.bithumb.bid:null;
       [{key:'binance',isBin:true},{key:'okx',isBin:false},{key:'bybit',isBin:false}].forEach(function(x){

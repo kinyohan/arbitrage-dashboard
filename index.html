@@ -735,12 +735,24 @@ async function init(){
         if(r[0].status==='fulfilled'){restCache.upbitMarketMap={};r[0].value.filter(function(m){return m.market.startsWith('KRW-')}).forEach(function(m){var sym=m.market.replace('KRW-','');restCache.upbitMarketMap[sym]={market:m.market,korean_name:m.korean_name,english_name:m.english_name}})}
         if(r[1].status==='fulfilled'&&r[1].value.data){restCache.bithumbData={};var raw=r[1].value.data;Object.keys(raw).forEach(function(k){if(k!=='date'&&typeof raw[k]==='object'&&raw[k].closing_price)restCache.bithumbData[k]=raw[k]})}
         if(r[2].status==='fulfilled'&&r[2].value.data)restCache.bithumbStatus=r[2].value.data;
-        // 빗썸 오더북 REST 폴백 갱신
-        if(r[1].status==='fulfilled'&&r[1].value.data){var bSy=Object.keys(restCache.bithumbData);var bOC=[];for(var bi2=0;bi2<bSy.length;bi2+=10)bOC.push(bSy.slice(bi2,bi2+10));var newBOB={};await Promise.allSettled(bOC.map(function(ch,ci2){return new Promise(function(res2){setTimeout(function(){Promise.allSettled(ch.map(function(sy){return fetchWithCors('https://api.bithumb.com/public/orderbook/'+sy+'_KRW?count=1').then(function(dd){return{sym:sy,data:dd}})})).then(function(rr){rr.forEach(function(cr2){if(cr2.status==='fulfilled'&&cr2.value.data&&cr2.value.data.data){var ob2=cr2.value.data.data;if(ob2.bids&&ob2.bids.length&&ob2.asks&&ob2.asks.length){var bp2=parseFloat(ob2.bids[0].price),bq2=parseFloat(ob2.bids[0].quantity);var ap2=parseFloat(ob2.asks[0].price),aq2=parseFloat(ob2.asks[0].quantity);newBOB[cr2.value.sym]={bid:bp2,ask:ap2,bidWall:bp2*bq2,askWall:ap2*aq2}}}});res2()})},ci2*200)})}));restCache.bithumbOB=newBOB}
         if(!restCache.realUsdKrw||!window._fxFetchedAt||Date.now()-window._fxFetchedAt>3600000){
           try{var fx=await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json');if(fx.ok){var fxd=await fx.json();restCache.realUsdKrw=fxd.usd.krw;window._fxFetchedAt=Date.now()}}catch(e){}}
       }catch(e){}
     },60000);
+    // 15초마다 빗썸 오더북 REST 갱신
+    setInterval(async function(){
+      try{var bSy=Object.keys(restCache.bithumbData);if(bSy.length===0)return;
+        var bOC=[];for(var bi3=0;bi3<bSy.length;bi3+=10)bOC.push(bSy.slice(bi3,bi3+10));
+        var newBOB={};
+        for(var ci3=0;ci3<bOC.length;ci3++){
+          try{var rr=await Promise.allSettled(bOC[ci3].map(function(sy){return fetchWithCors('https://api.bithumb.com/public/orderbook/'+sy+'_KRW?count=1').then(function(dd){return{sym:sy,data:dd}})}));
+          rr.forEach(function(cr3){if(cr3.status==='fulfilled'&&cr3.value.data&&cr3.value.data.data){var ob3=cr3.value.data.data;if(ob3.bids&&ob3.bids.length&&ob3.asks&&ob3.asks.length){var bp3=parseFloat(ob3.bids[0].price),bq3=parseFloat(ob3.bids[0].quantity);var ap3=parseFloat(ob3.asks[0].price),aq3=parseFloat(ob3.asks[0].quantity);newBOB[cr3.value.sym]={bid:bp3,ask:ap3,bidWall:bp3*bq3,askWall:ap3*aq3}}}});
+          }catch(e3){}
+          await new Promise(function(r){setTimeout(r,200)});
+        }
+        restCache.bithumbOB=newBOB;
+      }catch(e){}
+    },15000);
     elConnStatus.innerHTML='<span class="conn-dot ok"></span>실시간';
   }catch(e){
     console.error(e);elErrorBanner.textContent='⚠ 초기화 실패, REST 모드로 전환';elErrorBanner.classList.add('show');

@@ -266,10 +266,10 @@ var thIB=parseFloat(document.getElementById('alarmIntlBithumb').value)||1;
 var thBL=parseFloat(document.getElementById('alarmBlocked').value)||3;
 var now=Date.now();
 var labels=['업비트','글로벌','빗썸','블록'];
-var checks=[{rows:data.intlUpbitRows,th:thIU,label:'업비트'},{rows:data.allArbRows,th:thAA,label:'글로벌'},{rows:data.intlBithumbRows,th:thIB,label:'빗썸'},{rows:data.blockedRows,th:thBL,label:'블록'}];
+var checks=[{rows:data.intlUpbitRows,th:thIU,label:'업비트'},{rows:data.allArbRows,th:thAA,label:'글로벌'},{rows:data.intlBithumbRows,th:thIB,label:'빗썸'}];
 checks.forEach(function(c){c.rows.forEach(function(r){if(hiddenCoins.has(r.symbol))return;if(r.pct>=c.th){var key=r.symbol+'_'+c.label;var la=alarmCooldowns[key]||0;if(now-la>cd*1000){alarmCooldowns[key]=now;r._alarming=true;
   playBeep(vol);
-  ttsSpeak(c.label+' '+r.symbol+' '+r.pct.toFixed(1)+'퍼센트',vol);
+  ttsSpeak(c.label+' '+r.symbol+' '+Math.floor(r.pct)+'퍼',vol);
 }}})})}
 const elSO=document.getElementById('settingsOverlay'),elBS=document.getElementById('btnSettings');
 document.getElementById('settingsClose').addEventListener('click',function(){elSO.classList.remove('open');elBS.classList.remove('active')});

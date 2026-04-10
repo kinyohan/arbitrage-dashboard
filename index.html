@@ -373,7 +373,7 @@ function getAllBA(sym){
     ba.upbit={bid:u0.bid_price,ask:u0.ask_price,bidWall:ubW,askWall:uaW};
   }
   var bt=bithumbData[sym];
-  if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1){var bob=restCache.bithumbOB?restCache.bithumbOB[sym]:null;if(bob)ba.bithumb=bob;else ba.bithumb={bid:btp,ask:btp,bidWall:0,askWall:0}}}
+  if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1){var bob=restCache.bithumbOB?restCache.bithumbOB[sym]:null;if(bob)ba.bithumb=bob;else ba.bithumb={bid:btp,ask:btp,bidWall:1e7,askWall:1e7}}}
   if(usdtKrwRate){
     var krRef=ba.upbit?ba.upbit.bid:ba.bithumb?ba.bithumb.bid:null;
     var intls=[{key:'binance',isBin:true},{key:'okx',isBin:false},{key:'bybit',isBin:false}];
@@ -638,7 +638,7 @@ function buildRealtimeData(){
     var uob=wsBA.upbit[sym];if(uob)ba.upbit=uob;
     var bws=wsBA.bithumb[sym];
     if(bws&&bws.ts&&Date.now()-bws.ts<30000){ba.bithumb=bws}
-    else{var bt=bd[sym];if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1){var bob=restCache.bithumbOB?restCache.bithumbOB[sym]:null;if(bob)ba.bithumb=bob;else ba.bithumb={bid:btp,ask:btp,bidWall:0,askWall:0}}}}
+    else{var bt=bd[sym];if(bt){var btp=parseFloat(bt.closing_price);if(btp>=1){var bob=restCache.bithumbOB?restCache.bithumbOB[sym]:null;if(bob)ba.bithumb=bob;else ba.bithumb={bid:btp,ask:btp,bidWall:1e7,askWall:1e7}}}}
     if(usdtKrw){
       var krRef=ba.upbit?ba.upbit.bid:ba.bithumb?ba.bithumb.bid:null;
       [{key:'binance',isBin:true},{key:'okx',isBin:false},{key:'bybit',isBin:false}].forEach(function(x){

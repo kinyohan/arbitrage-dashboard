@@ -490,29 +490,28 @@ function wsConnect(name,url,onMsg,onOpen){
   ws.onerror=function(e){console.warn('[WS]',name,'err');ws.close()};
 }
 
-function startAllWS(markets){
-  // 업비트 orderbook
-  var upWs=new WebSocket('wss://api.upbit.com/websocket/v1');
-  upWs.onopen=function(){upWs.send(JSON.stringify([{ticket:'arb'},{type:'orderbook',codes:markets}]))};
-  upWs.onmessage=function(e){
+function startUpbitWS(markets){
+  var ws=new WebSocket('wss://api.upbit.com/websocket/v1');
+  ws.onopen=function(){ws.send(JSON.stringify([{ticket:'arb'},{type:'orderbook',codes:markets}]))};
+  ws.onmessage=function(e){
     var r=new FileReader();r.onload=function(){try{
       var d=JSON.parse(r.result);var sym=d.code.replace('KRW-','');
       if(d.orderbook_units&&d.orderbook_units.length>0){var u=d.orderbook_units[0];
         wsBA.upbit[sym]={bid:u.bid_price,ask:u.ask_price,bidWall:u.bid_price*u.bid_size,askWall:u.ask_price*u.ask_size}}
     }catch(ex){}};r.readAsText(e.data);
   };
-  upWs.onclose=function(){setTimeout(function(){startAllWS(markets)},3000)};
-  upWs.onerror=function(){upWs.close()};
-
-  // 바이낸스 bookTicker
+  ws.onclose=function(){setTimeout(function(){startUpbitWS(markets)},3000)};
+  ws.onerror=function(){ws.close()};
+}
+function startBinanceWS(){
   wsConnect('binance','wss://stream.binance.com:9443/ws/!bookTicker',function(e){
     try{var d=JSON.parse(e.data);if(d.s&&d.s.endsWith('USDT')){var sym=d.s.replace('USDT','');
       if(restCache.binanceActiveSyms[sym]===undefined&&Object.keys(restCache.binanceActiveSyms).length>0)return;
       var bid=parseFloat(d.b),ask=parseFloat(d.a),bsz=parseFloat(d.B),asz=parseFloat(d.A);
       if(bid>0&&ask>0)wsBA.binance[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}catch(ex){}
   });
-
-  // OKX tickers
+}
+function startOkxWS(){
   wsConnect('okx','wss://ws.okx.com:8443/ws/v5/public',function(e){
     try{var d=JSON.parse(e.data);if(d.data){d.data.forEach(function(t){
       if(t.instId&&t.instId.endsWith('-USDT')){var sym=t.instId.replace('-USDT','');
@@ -520,14 +519,34 @@ function startAllWS(markets){
         if(bid>0&&ask>0)wsBA.okx[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}
     })}}catch(ex){}
   },function(ws){ws.send(JSON.stringify({op:'subscribe',args:[{channel:'tickers',instType:'SPOT'}]}))});
-
-  // 바이빗 tickers
-  wsConnect('bybit','wss://stream.bybit.com/v5/public/spot',function(e){
-    try{var d=JSON.parse(e.data);if(d.topic&&d.data){var sym=d.topic.replace('tickers.','').replace('USDT','');
-      var t=d.data;var bid=parseFloat(t.bid1Price),ask=parseFloat(t.ask1Price),bsz=parseFloat(t.bid1Size||0),asz=parseFloat(t.ask1Size||0);
-      if(bid>0&&ask>0)wsBA.bybit[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}catch(ex){}
-  },function(ws){ws.send(JSON.stringify({op:'subscribe',args:['tickers.BTCUSDT','tickers.ETHUSDT','tickers.XRPUSDT','tickers.SOLUSDT','tickers.ADAUSDT','tickers.DOTUSDT','tickers.AVAXUSDT','tickers.LINKUSDT','tickers.ATOMUSDT','tickers.NEARUSDT']}))});
-
+}
+function startBybitWS(symbols){
+  // 바이빗은 개별 구독 필요 → 전체 USDT 심볼 구독
+  var args=symbols.map(function(s){return'tickers.'+s+'USDT'});
+  // 바이빗 최대 10개씩 구독, 여러 연결
+  for(var bi=0;bi<args.length;bi+=10){
+    (function(chunk){
+      var ws=new WebSocket('wss://stream.bybit.com/v5/public/spot');
+      ws.onopen=function(){ws.send(JSON.stringify({op:'subscribe',args:chunk}))};
+      ws.onmessage=function(e){
+        try{var d=JSON.parse(e.data);if(d.topic&&d.data){var sym=d.topic.replace('tickers.','').replace('USDT','');
+          var t=d.data;var bid=parseFloat(t.bid1Price),ask=parseFloat(t.ask1Price),bsz=parseFloat(t.bid1Size||0),asz=parseFloat(t.ask1Size||0);
+          if(bid>0&&ask>0)wsBA.bybit[sym]={bid:bid,ask:ask,bidSz:bsz,askSz:asz}}}catch(ex){}
+      };
+      ws.onclose=function(){setTimeout(function(){
+        var ws2=new WebSocket('wss://stream.bybit.com/v5/public/spot');
+        ws2.onopen=function(){ws2.send(JSON.stringify({op:'subscribe',args:chunk}))};
+        ws2.onmessage=ws.onmessage;ws2.onclose=ws.onclose;ws2.onerror=function(){ws2.close()};
+      },3000)};
+      ws.onerror=function(){ws.close()};
+    })(args.slice(bi,bi+10));
+  }
+}
+function startAllWS(markets,bybitSyms){
+  startUpbitWS(markets);
+  startBinanceWS();
+  startOkxWS();
+  startBybitWS(bybitSyms);
   wsReady=true;
 }
 
@@ -602,7 +621,9 @@ async function init(){
     // WS 시작
     var markets=Object.keys(restCache.upbitMarketMap).map(function(s){return'KRW-'+s});
     if(markets.indexOf('KRW-USDT')===-1)markets.push('KRW-USDT');
-    startAllWS(markets);
+    var bybitSyms=Object.keys(wsBA.bybit);
+    if(bybitSyms.length===0)bybitSyms=Object.keys(restCache.upbitMarketMap).filter(function(s){return s!=='USDT'});
+    startAllWS(markets,bybitSyms);
     // WS가 안정화될 때까지 대기 후 렌더 루프 시작
     var wsReadyChecks={upbit:false,binance:false,okx:false,bybit:false};
     var wsCheckTimer=setInterval(function(){

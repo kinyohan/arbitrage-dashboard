@@ -242,7 +242,21 @@ function restoreAll(){hiddenCoins.clear();saveHidden();if(lastData)renderAllTabl
 window._hideSymbol=hideSymbol;window._restoreSymbol=restoreSymbol;window._restoreAll=restoreAll;
 let audioCtx=null;const alarmCooldowns={};
 function getAudioCtx(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx}
-function playBeep(v){try{const c=getAudioCtx(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='triangle';o.frequency.setValueAtTime(880,c.currentTime);o.frequency.setValueAtTime(1100,c.currentTime+0.15);o.frequency.setValueAtTime(880,c.currentTime+0.3);o.frequency.setValueAtTime(1100,c.currentTime+0.45);g.gain.setValueAtTime(v*0.85,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.7);o.start(c.currentTime);o.stop(c.currentTime+0.7)}catch(e){console.warn('Audio error',e)}}
+function playBeep(v){try{const c=getAudioCtx(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.type='triangle';o.frequency.setValueAtTime(880,c.currentTime);o.frequency.setValueAtTime(1100,c.currentTime+0.15);g.gain.setValueAtTime(v*0.85,c.currentTime);g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.4);o.start(c.currentTime);o.stop(c.currentTime+0.4)}catch(e){}}
+var ttsQueue=[];var ttsBusy=false;
+function ttsSpeak(text,vol){
+  ttsQueue.push({text:text,vol:vol});
+  if(!ttsBusy)ttsNext();
+}
+function ttsNext(){
+  if(ttsQueue.length===0){ttsBusy=false;return}
+  ttsBusy=true;var item=ttsQueue.shift();
+  var u=new SpeechSynthesisUtterance(item.text);
+  u.lang='ko-KR';u.rate=1.3;u.volume=item.vol;
+  u.onend=function(){setTimeout(ttsNext,300)};
+  u.onerror=function(){setTimeout(ttsNext,300)};
+  window.speechSynthesis.speak(u);
+}
 function checkAlarms(data){var en=document.getElementById('alarmEnabled').checked;if(!en)return;
 var vol=(parseInt(document.getElementById('alarmVolume').value)||50)/100;
 var cd=parseInt(document.getElementById('alarmCooldown').value)||30;
@@ -250,10 +264,13 @@ var thIU=parseFloat(document.getElementById('alarmIntlUpbit').value)||1;
 var thAA=parseFloat(document.getElementById('alarmAllArb').value)||0.5;
 var thIB=parseFloat(document.getElementById('alarmIntlBithumb').value)||1;
 var thBL=parseFloat(document.getElementById('alarmBlocked').value)||3;
-var now=Date.now(),beep=false;
-var checks=[{rows:data.intlUpbitRows,th:thIU},{rows:data.allArbRows,th:thAA},{rows:data.intlBithumbRows,th:thIB},{rows:data.blockedRows,th:thBL}];
-checks.forEach(function(c){c.rows.forEach(function(r){if(hiddenCoins.has(r.symbol))return;if(r.pct>=c.th){var la=alarmCooldowns[r.symbol+'_'+c.th]||0;if(now-la>cd*1000){alarmCooldowns[r.symbol+'_'+c.th]=now;beep=true;r._alarming=true}}})});
-if(beep)playBeep(vol)}
+var now=Date.now();
+var labels=['업비트','글로벌','빗썸','블록'];
+var checks=[{rows:data.intlUpbitRows,th:thIU,label:'업비트'},{rows:data.allArbRows,th:thAA,label:'글로벌'},{rows:data.intlBithumbRows,th:thIB,label:'빗썸'},{rows:data.blockedRows,th:thBL,label:'블록'}];
+checks.forEach(function(c){c.rows.forEach(function(r){if(hiddenCoins.has(r.symbol))return;if(r.pct>=c.th){var key=r.symbol+'_'+c.label;var la=alarmCooldowns[key]||0;if(now-la>cd*1000){alarmCooldowns[key]=now;r._alarming=true;
+  playBeep(vol);
+  ttsSpeak(c.label+' '+r.symbol+' '+r.pct.toFixed(1)+'퍼센트',vol);
+}}})})}
 const elSO=document.getElementById('settingsOverlay'),elBS=document.getElementById('btnSettings');
 document.getElementById('settingsClose').addEventListener('click',function(){elSO.classList.remove('open');elBS.classList.remove('active')});
 elBS.addEventListener('click',function(){elSO.classList.toggle('open');elBS.classList.toggle('active');renderHiddenCoins()});

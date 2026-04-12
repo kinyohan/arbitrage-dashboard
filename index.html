@@ -678,34 +678,32 @@ function buildRealtimeData(){
 
 // 초기 REST 로딩 → WS 시작 → 200ms 렌더 루프
 async function init(){
+  elCountdown.textContent='초기화...';
+  elConnStatus.innerHTML='<span class="conn-dot ok"></span>실시간';
+  // 렌더 루프는 무조건 즉시 시작
+  setInterval(function(){
+    try{
+      var usdtOB=wsBA.upbit['USDT'];
+      if(usdtOB&&usdtOB.bid>1000)restCache.usdtKrwRate=(usdtOB.bid+usdtOB.ask)/2;
+      if(Object.keys(restCache.upbitMarketMap).length>0){
+        var d=buildRealtimeData();render(d);
+        elCountdown.textContent='실시간';
+      }else{
+        elCountdown.textContent='로딩중';
+      }
+    }catch(e){console.error(e)}
+  },200);
+  // 초기 데이터 로딩 (비동기, 실패해도 렌더는 계속)
   try{
-    elCountdown.textContent='초기화...';
     var data=await fetchAllData();
     render(data);
-    // REST 캐시 저장
     restCache.usdtKrwRate=data.usdtKrwRate;
     restCache.realUsdKrw=data.realUsdKrw;
-    // WS 시작
     var markets=Object.keys(restCache.upbitMarketMap).map(function(s){return'KRW-'+s});
     if(markets.indexOf('KRW-USDT')===-1)markets.push('KRW-USDT');
-    var bybitSyms=Object.keys(wsBA.bybit);
-    if(bybitSyms.length===0)bybitSyms=Object.keys(restCache.upbitMarketMap).filter(function(s){return s!=='USDT'});
+    var bybitSyms=Object.keys(restCache.upbitMarketMap).filter(function(s){return s!=='USDT'});
     startAllWS(markets,bybitSyms);
-    // WS가 안정화될 때까지 대기 후 렌더 루프 시작
-    // REST 초기 데이터로 바로 렌더 시작 (WS는 백그라운드에서 연결)
-    var wsStartTime=Date.now();
-    function startRenderLoop(){
-      console.log('[WS] render loop started');
-      elConnStatus.innerHTML='<span class="conn-dot ok"></span>실시간';
-      setInterval(function(){
-        var usdtOB=wsBA.upbit['USDT'];
-        if(usdtOB&&usdtOB.bid>1000)restCache.usdtKrwRate=(usdtOB.bid+usdtOB.ask)/2;
-        try{var d=buildRealtimeData();render(d)}catch(e){console.error(e)}
-        elCountdown.textContent='실시간';
-      },200);
-    }
-    // 3초 후 무조건 렌더 루프 시작 (WS 대기하지 않음)
-    setTimeout(startRenderLoop,3000);
+  }catch(e){console.error('[init]',e)}
     // 5초마다 전체 해외거래소 REST 보정 (WS stale 방지)
     setInterval(async function(){
       try{
@@ -743,12 +741,6 @@ async function init(){
         restCache.bithumbOB=newBOB;
       }catch(e){}
     },15000);
-    elConnStatus.innerHTML='<span class="conn-dot ok"></span>실시간';
-  }catch(e){
-    console.error(e);elErrorBanner.textContent='⚠ 초기화 실패, REST 모드로 전환';elErrorBanner.classList.add('show');
-    // 폴백: REST 폴링
-    async function tick(){try{var data=await fetchAllData();render(data)}catch(e2){}setTimeout(tick,2000)}tick();
-  }
 }
 init();
 })();

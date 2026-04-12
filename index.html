@@ -692,30 +692,20 @@ async function init(){
     if(bybitSyms.length===0)bybitSyms=Object.keys(restCache.upbitMarketMap).filter(function(s){return s!=='USDT'});
     startAllWS(markets,bybitSyms);
     // WS가 안정화될 때까지 대기 후 렌더 루프 시작
-    var wsReadyChecks={upbit:false,binance:false,okx:false,bybit:false};
-    var wsCheckTimer=setInterval(function(){
-      if(Object.keys(wsBA.upbit).length>5)wsReadyChecks.upbit=true;
-      if(Object.keys(wsBA.binance).length>5)wsReadyChecks.binance=true;
-      if(Object.keys(wsBA.okx).length>5)wsReadyChecks.okx=true;
-      if(Object.keys(wsBA.bybit).length>5)wsReadyChecks.bybit=true;
-      var allReady=wsReadyChecks.upbit&&wsReadyChecks.binance;
-      // USDT 필수 체크
-      if(!wsBA.upbit['USDT'])allReady=false;
-      if(allReady){
-        clearInterval(wsCheckTimer);
-        console.log('[WS] All ready, starting render loop');
-        elConnStatus.innerHTML='<span class="conn-dot ok"></span>실시간';
-        // 200ms 실시간 렌더 루프
-        setInterval(function(){
-          var usdtOB=wsBA.upbit['USDT'];
-          if(usdtOB&&usdtOB.bid>1000)restCache.usdtKrwRate=(usdtOB.bid+usdtOB.ask)/2;
-          try{var d=buildRealtimeData();render(d)}catch(e){console.error(e)}
-          elCountdown.textContent='실시간';
-        },200);
-      }else{
-        elCountdown.textContent='WS 연결중...';
-      }
-    },500);
+    // REST 초기 데이터로 바로 렌더 시작 (WS는 백그라운드에서 연결)
+    var wsStartTime=Date.now();
+    function startRenderLoop(){
+      console.log('[WS] render loop started');
+      elConnStatus.innerHTML='<span class="conn-dot ok"></span>실시간';
+      setInterval(function(){
+        var usdtOB=wsBA.upbit['USDT'];
+        if(usdtOB&&usdtOB.bid>1000)restCache.usdtKrwRate=(usdtOB.bid+usdtOB.ask)/2;
+        try{var d=buildRealtimeData();render(d)}catch(e){console.error(e)}
+        elCountdown.textContent='실시간';
+      },200);
+    }
+    // 3초 후 무조건 렌더 루프 시작 (WS 대기하지 않음)
+    setTimeout(startRenderLoop,3000);
     // 5초마다 전체 해외거래소 REST 보정 (WS stale 방지)
     setInterval(async function(){
       try{

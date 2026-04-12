@@ -680,7 +680,7 @@ function buildRealtimeData(){
 async function init(){
   elCountdown.textContent='초기화...';
   elConnStatus.innerHTML='<span class="conn-dot ok"></span>실시간';
-  // 렌더 루프는 무조건 즉시 시작
+  // 렌더 루프 즉시 시작
   setInterval(function(){
     try{
       var usdtOB=wsBA.upbit['USDT'];
@@ -689,21 +689,61 @@ async function init(){
         var d=buildRealtimeData();render(d);
         elCountdown.textContent='실시간';
       }else{
-        elCountdown.textContent='로딩중';
+        elCountdown.textContent='데이터 대기중';
       }
     }catch(e){console.error(e)}
   },200);
-  // 초기 데이터 로딩 (비동기, 실패해도 렌더는 계속)
-  try{
-    var data=await fetchAllData();
-    render(data);
-    restCache.usdtKrwRate=data.usdtKrwRate;
-    restCache.realUsdKrw=data.realUsdKrw;
-    var markets=Object.keys(restCache.upbitMarketMap).map(function(s){return'KRW-'+s});
-    if(markets.indexOf('KRW-USDT')===-1)markets.push('KRW-USDT');
-    var bybitSyms=Object.keys(restCache.upbitMarketMap).filter(function(s){return s!=='USDT'});
-    startAllWS(markets,bybitSyms);
-  }catch(e){console.error('[init]',e)}
+  // 초기 데이터 로딩 - fetchAllData 대신 직접 병렬 호출
+  async function loadInitial(){
+    try{
+      console.log('[init] loading...');
+      var [upR,btR,bsR,bnR,eiR,okR,byR]=await Promise.allSettled([
+        fetch('https://api.upbit.com/v1/market/all').then(r=>r.json()),
+        fetch('https://api.bithumb.com/public/ticker/ALL_KRW').then(r=>r.json()),
+        fetch('https://api.bithumb.com/public/assetsstatus/ALL').then(r=>r.json()),
+        fetch('https://api.binance.com/api/v3/ticker/bookTicker').then(r=>r.json()),
+        fetch('https://api.binance.com/api/v3/exchangeInfo').then(r=>r.json()),
+        fetch('https://www.okx.com/api/v5/market/tickers?instType=SPOT').then(r=>r.json()),
+        fetch('https://api.bybit.com/v5/market/tickers?category=spot').then(r=>r.json())
+      ]);
+      console.log('[init] APIs done');
+      // 업비트 마켓
+      if(upR.status==='fulfilled'&&Array.isArray(upR.value)){
+        var um={};upR.value.filter(m=>m.market.startsWith('KRW-')).forEach(m=>{var s=m.market.replace('KRW-','');um[s]={market:m.market,korean_name:m.korean_name,english_name:m.english_name}});
+        restCache.upbitMarketMap=um;
+      }
+      // 빗썸
+      if(btR.status==='fulfilled'&&btR.value.data){var bd={};var raw=btR.value.data;Object.keys(raw).forEach(k=>{if(k!=='date'&&typeof raw[k]==='object'&&raw[k].closing_price)bd[k]=raw[k]});restCache.bithumbData=bd}
+      if(bsR.status==='fulfilled'&&bsR.value.data)restCache.bithumbStatus=bsR.value.data;
+      // 바이낸스
+      if(eiR.status==='fulfilled'&&eiR.value.symbols){var act={};eiR.value.symbols.forEach(s=>{if(s.symbol.endsWith('USDT')&&s.status==='TRADING')act[s.symbol.replace('USDT','')]=true});restCache.binanceActiveSyms=act}
+      if(bnR.status==='fulfilled'&&Array.isArray(bnR.value)){bnR.value.forEach(t=>{if(t.symbol&&t.symbol.endsWith('USDT')){var sym=t.symbol.replace('USDT','');if(restCache.binanceActiveSyms[sym]){var bid=parseFloat(t.bidPrice),ask=parseFloat(t.askPrice);if(bid>0&&ask>0)wsBA.binance[sym]={bid:bid,ask:ask,bidSz:parseFloat(t.bidQty),askSz:parseFloat(t.askQty)}}}})}
+      // OKX
+      if(okR.status==='fulfilled'&&okR.value.data)okR.value.data.forEach(t=>{if(t.instId&&t.instId.endsWith('-USDT')){var sym=t.instId.replace('-USDT','');var bid=parseFloat(t.bidPx),ask=parseFloat(t.askPx);if(bid>0&&ask>0)wsBA.okx[sym]={bid:bid,ask:ask,bidSz:parseFloat(t.bidSz||0),askSz:parseFloat(t.askSz||0)}}});
+      // 바이빗
+      if(byR.status==='fulfilled'&&byR.value.result&&byR.value.result.list)byR.value.result.list.forEach(t=>{if(t.symbol&&t.symbol.endsWith('USDT')){var sym=t.symbol.replace('USDT','');var bid=parseFloat(t.bid1Price),ask=parseFloat(t.ask1Price);if(bid>0&&ask>0)wsBA.bybit[sym]={bid:bid,ask:ask,bidSz:parseFloat(t.bid1Size||0),askSz:parseFloat(t.ask1Size||0)}}});
+      // USDT 환율 업비트 ticker에서
+      try{var uT=await fetch('https://api.upbit.com/v1/ticker?markets=KRW-USDT').then(r=>r.json());if(uT[0])restCache.usdtKrwRate=uT[0].trade_price}catch(e){}
+      // 환율 API
+      try{var fx=await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json').then(r=>r.json());if(fx.usd)restCache.realUsdKrw=fx.usd.krw}catch(e){}
+      console.log('[init] rest loaded:',Object.keys(restCache.upbitMarketMap).length,'coins');
+      // 업비트 오더북 백그라운드 로딩
+      var allSyms=Object.keys(restCache.upbitMarketMap).map(s=>'KRW-'+s);
+      for(var i=0;i<allSyms.length;i+=15){
+        var chunk=allSyms.slice(i,i+15);
+        try{var r=await fetch('https://api.upbit.com/v1/orderbook?markets='+chunk.join(',')).then(r=>r.json());
+        r.forEach(ob=>{var sym=ob.market.replace('KRW-','');var u0=ob.orderbook_units[0];var ubW=0,uaW=0;ob.orderbook_units.forEach(u=>{ubW+=u.bid_price*u.bid_size;uaW+=u.ask_price*u.ask_size});wsBA.upbit[sym]={bid:u0.bid_price,ask:u0.ask_price,bidWall:ubW,askWall:uaW}})}catch(e){}
+        await new Promise(r=>setTimeout(r,100));
+      }
+      console.log('[init] orderbooks loaded');
+      // WS 시작
+      var markets=Object.keys(restCache.upbitMarketMap).map(s=>'KRW-'+s);
+      if(markets.indexOf('KRW-USDT')===-1)markets.push('KRW-USDT');
+      var bybitSyms=Object.keys(restCache.upbitMarketMap).filter(s=>s!=='USDT');
+      startAllWS(markets,bybitSyms);
+    }catch(e){console.error('[init] error:',e)}
+  }
+  loadInitial();
     // 5초마다 전체 해외거래소 REST 보정 (WS stale 방지)
     setInterval(async function(){
       try{

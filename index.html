@@ -698,9 +698,9 @@ async function init(){
     try{
       console.log('[init] loading...');
       var [upR,btR,bsR,bnR,eiR,okR,byR]=await Promise.allSettled([
-        fetch('https://api.upbit.com/v1/market/all').then(r=>r.json()),
-        fetch('https://api.bithumb.com/public/ticker/ALL_KRW').then(r=>r.json()),
-        fetch('https://api.bithumb.com/public/assetsstatus/ALL').then(r=>r.json()),
+        fetchWithCors('https://api.upbit.com/v1/market/all'),
+        fetchWithCors('https://api.bithumb.com/public/ticker/ALL_KRW'),
+        fetchWithCors('https://api.bithumb.com/public/assetsstatus/ALL'),
         fetch('https://api.binance.com/api/v3/ticker/bookTicker').then(r=>r.json()),
         fetch('https://api.binance.com/api/v3/exchangeInfo').then(r=>r.json()),
         fetch('https://www.okx.com/api/v5/market/tickers?instType=SPOT').then(r=>r.json()),
@@ -723,7 +723,7 @@ async function init(){
       // 바이빗
       if(byR.status==='fulfilled'&&byR.value.result&&byR.value.result.list)byR.value.result.list.forEach(t=>{if(t.symbol&&t.symbol.endsWith('USDT')){var sym=t.symbol.replace('USDT','');var bid=parseFloat(t.bid1Price),ask=parseFloat(t.ask1Price);if(bid>0&&ask>0)wsBA.bybit[sym]={bid:bid,ask:ask,bidSz:parseFloat(t.bid1Size||0),askSz:parseFloat(t.ask1Size||0)}}});
       // USDT 환율 업비트 ticker에서
-      try{var uT=await fetch('https://api.upbit.com/v1/ticker?markets=KRW-USDT').then(r=>r.json());if(uT[0])restCache.usdtKrwRate=uT[0].trade_price}catch(e){}
+      try{var uT=await fetchWithCors('https://api.upbit.com/v1/ticker?markets=KRW-USDT');if(uT[0])restCache.usdtKrwRate=uT[0].trade_price}catch(e){}
       // 환율 API
       try{var fx=await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json').then(r=>r.json());if(fx.usd)restCache.realUsdKrw=fx.usd.krw}catch(e){}
       console.log('[init] rest loaded:',Object.keys(restCache.upbitMarketMap).length,'coins');
@@ -731,7 +731,7 @@ async function init(){
       var allSyms=Object.keys(restCache.upbitMarketMap).map(s=>'KRW-'+s);
       for(var i=0;i<allSyms.length;i+=15){
         var chunk=allSyms.slice(i,i+15);
-        try{var r=await fetch('https://api.upbit.com/v1/orderbook?markets='+chunk.join(',')).then(r=>r.json());
+        try{var r=await fetchWithCors('https://api.upbit.com/v1/orderbook?markets='+chunk.join(','));
         r.forEach(ob=>{var sym=ob.market.replace('KRW-','');var u0=ob.orderbook_units[0];var ubW=0,uaW=0;ob.orderbook_units.forEach(u=>{ubW+=u.bid_price*u.bid_size;uaW+=u.ask_price*u.ask_size});wsBA.upbit[sym]={bid:u0.bid_price,ask:u0.ask_price,bidWall:ubW,askWall:uaW}})}catch(e){}
         await new Promise(r=>setTimeout(r,100));
       }
